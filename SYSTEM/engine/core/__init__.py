@@ -10,6 +10,7 @@ from engine.core.paths import (
     SystemPaths,
 )
 from engine.core.clock import format_utc_timestamp, now_utc, utc_now
+from engine.core.instance import Instance, ensure_unique_instance_keys
 
 __all__ = [
     "format_utc_timestamp",
@@ -24,4 +25,6 @@ __all__ = [
     "DEFAULT_LOGS_PATH",
     "DEFAULT_UNIVERSE_PATH",
     "SystemPaths",
+    "Instance",
+    "ensure_unique_instance_keys",
 ]
