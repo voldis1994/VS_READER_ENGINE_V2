@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, MutableMapping
 
+import time
+
 from engine.analysis.structure import StructureAnalysis, analyze_structure
 from engine.core.clock import now_utc
 from engine.core.instance import Instance
@@ -62,6 +64,7 @@ class InstanceCycleResult:
     decision_journal_logged: bool = False
     execution_result: ExecutionResult | None = None
     trade_executed: bool = False
+    ack_latency_ms: int | None = None
 
 
 def build_risk_trade_params() -> RiskEngineTradeParams:
@@ -424,6 +427,7 @@ def run_instance_cycle(
     execution_result: ExecutionResult | None = None
     trade_executed = False
     if runtime.allow_control_writes:
+        execution_started = time.monotonic()
         execution_result = run_execution_engine(
             paths=runtime.paths,
             instance=instance,
@@ -433,11 +437,16 @@ def run_instance_cycle(
             runtime=runtime.config.runtime,
             timestamp_utc=resolved_timestamp,
         )
+        ack_latency_ms = int((time.monotonic() - execution_started) * 1000)
         trade_executed = should_execute_trade(
             runtime=runtime,
             decision_result=decision_result,
             risk_engine_result=risk_engine_result,
         )
+    else:
+        execution_result = None
+        ack_latency_ms = None
+        trade_executed = False
 
     _finalize_cycle_state(
         instance_memory=instance_memory,
@@ -456,4 +465,5 @@ def run_instance_cycle(
         decision_journal_logged=True,
         execution_result=execution_result,
         trade_executed=trade_executed,
+        ack_latency_ms=ack_latency_ms,
     )

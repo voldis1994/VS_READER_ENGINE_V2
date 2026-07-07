@@ -14,6 +14,7 @@ from engine.core.lifecycle import (
     spread_snapshot_from_record,
 )
 from engine.core.logging_setup import log_event
+from engine.core.monitoring import MonitoringState, log_runtime_monitoring_summary, observe_instance_cycle
 from engine.journal.error_journal import log_error
 from engine.protocol.constants import ErrorType
 from engine.state.instance_state import InstanceState
@@ -144,6 +145,7 @@ def run_runtime_cycles(
 
     results: list[InstanceCycleResult] = []
     shared_cache: dict[str, Any] = {} if cache is None else cache
+    monitoring_state = MonitoringState()
 
     from engine.core.recovery import run_runtime_recovery
 
@@ -157,15 +159,22 @@ def run_runtime_cycles(
     for instance in target_instances:
         if runtime.shutdown_requested:
             break
-        results.append(
-            run_instance_cycle_isolated(
-                runtime,
-                instance,
-                use_global_universe=use_global_universe,
-                timestamp_utc=resolved_timestamp,
-                cache=shared_cache,
-            )
+        result = run_instance_cycle_isolated(
+            runtime,
+            instance,
+            use_global_universe=use_global_universe,
+            timestamp_utc=resolved_timestamp,
+            cache=shared_cache,
         )
+        monitoring_state = observe_instance_cycle(
+            runtime,
+            instance,
+            result,
+            cache=shared_cache,
+            state=monitoring_state,
+            measured_ack_latency_ms=result.ack_latency_ms,
+        )
+        results.append(result)
 
     completed_count = sum(1 for result in results if result.completed)
     failed_count = len(results) - completed_count
@@ -177,6 +186,13 @@ def run_runtime_cycles(
             f"runtime cycle end instances={len(results)} "
             f"completed={completed_count} failed={failed_count}"
         ),
+    )
+    log_runtime_monitoring_summary(
+        runtime,
+        instance_count=len(results),
+        completed_count=completed_count,
+        failed_count=failed_count,
+        total_errors=sum(monitoring_state.error_counts.values()),
     )
     return OrchestratorCycleResult(
         instance_results=tuple(results),
