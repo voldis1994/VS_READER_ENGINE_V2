@@ -14,17 +14,18 @@ Projekta sakne: `C:\SYSTEM`
 
 ## Uzstādīšana
 
-### Automātiski (Windows — ieteicams)
+### Automātiski (Windows — viens fails)
 
-1. Lejupielādējiet `scripts/install_windows.bat` un `scripts/install_windows.ps1` no GitHub
-2. Dubultklikšķis uz `install_windows.bat`
-3. Pēc instalācijas viss būs mapē `C:\SYSTEM`
+**Vienkāršākais:** lejupielādējiet un dubultklikšķiniet:
 
-Ar MT4 failu kopēšanu:
+https://github.com/voldis1994/VS_READER_ENGINE_V2/raw/cursor/reaudit-fixes-258d/SYSTEM/scripts/LEJUPIELADE_UZREIZ.bat
+
+Viss tiks uzstādīts mapē `C:\SYSTEM` automātiski.
+
+**PowerShell (viena komanda):**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install_windows.ps1 `
-  -Mt4DataPath "C:\Users\JŪSU_VĀRDS\AppData\Roaming\MetaQuotes\Terminal\XXXXXXXX\MQL4"
+Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/cursor/reaudit-fixes-258d/SYSTEM/scripts/lejupielade_uzreiz.ps1'))
 ```
 
 Papildu instrukcijas: `scripts/LEJUPIELADE.txt`
