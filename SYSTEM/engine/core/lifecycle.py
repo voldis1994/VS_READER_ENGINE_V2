@@ -204,13 +204,17 @@ def startup(
             f"cache_hashes_removed={removed_hashes}"
         ),
     )
-    return LiveRuntime(
+    runtime = LiveRuntime(
         paths=paths,
         config=config,
         memory=memory,
         system_logger=system_logger,
         spread_models=spread_models,
     )
+    from engine.core.recovery import run_runtime_recovery
+
+    run_runtime_recovery(runtime, instances=instances)
+    return runtime
 
 
 def request_shutdown(runtime: LiveRuntime) -> None:
