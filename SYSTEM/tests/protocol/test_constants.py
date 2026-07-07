@@ -139,6 +139,9 @@ def test_ack_status_enum() -> None:
     assert AckStatus.REJECTED.value == "REJECTED"
     assert AckStatus.TIMEOUT.value == "TIMEOUT"
     assert is_valid_ack_status("SUCCESS")
+    assert is_valid_ack_status("FAILED")
+    assert is_valid_ack_status("REJECTED")
+    assert not is_valid_ack_status("TIMEOUT")
     assert not is_valid_ack_status("PENDING")
 
 

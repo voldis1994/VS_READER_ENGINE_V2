@@ -284,14 +284,70 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
         is_supported_config_schema_version,
     )
     system_data = _require_key(payload, "system", "system_config")
+    if not isinstance(system_data, dict):
+        raise _protocol_error(
+            "system section must be an object",
+            label="system_config",
+            field="system",
+            value_type=type(system_data).__name__,
+        )
     paths_data = _require_key(payload, "paths", "system_config")
+    if not isinstance(paths_data, dict):
+        raise _protocol_error(
+            "paths section must be an object",
+            label="system_config",
+            field="paths",
+            value_type=type(paths_data).__name__,
+        )
     runtime_data = _require_key(payload, "runtime", "system_config")
+    if not isinstance(runtime_data, dict):
+        raise _protocol_error(
+            "runtime section must be an object",
+            label="system_config",
+            field="runtime",
+            value_type=type(runtime_data).__name__,
+        )
     instances_data = _require_key(payload, "instances", "system_config")
     risk_data = _require_key(payload, "risk", "system_config")
+    if not isinstance(risk_data, dict):
+        raise _protocol_error(
+            "risk section must be an object",
+            label="system_config",
+            field="risk",
+            value_type=type(risk_data).__name__,
+        )
     analysis_data = _require_key(payload, "analysis", "system_config")
+    if not isinstance(analysis_data, dict):
+        raise _protocol_error(
+            "analysis section must be an object",
+            label="system_config",
+            field="analysis",
+            value_type=type(analysis_data).__name__,
+        )
     journal_data = _require_key(payload, "journal", "system_config")
+    if not isinstance(journal_data, dict):
+        raise _protocol_error(
+            "journal section must be an object",
+            label="system_config",
+            field="journal",
+            value_type=type(journal_data).__name__,
+        )
     dashboard_data = _require_key(payload, "dashboard", "system_config")
+    if not isinstance(dashboard_data, dict):
+        raise _protocol_error(
+            "dashboard section must be an object",
+            label="system_config",
+            field="dashboard",
+            value_type=type(dashboard_data).__name__,
+        )
     logging_data = _require_key(payload, "logging", "system_config")
+    if not isinstance(logging_data, dict):
+        raise _protocol_error(
+            "logging section must be an object",
+            label="system_config",
+            field="logging",
+            value_type=type(logging_data).__name__,
+        )
 
     if not isinstance(instances_data, list):
         raise _protocol_error(
@@ -312,10 +368,10 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             _build_model(
                 InstanceDefinition,
                 "system_config",
-                account_id=item["account_id"],
-                symbol=item["symbol"],
-                magic=item["magic"],
-                enabled=item["enabled"],
+                account_id=_require_key(item, "account_id", "system_config"),
+                symbol=_require_key(item, "symbol", "system_config"),
+                magic=_require_key(item, "magic", "system_config"),
+                enabled=_require_key(item, "enabled", "system_config"),
             )
         )
 
@@ -326,55 +382,75 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
         system=_build_model(
             SystemSection,
             "system_config",
-            name=system_data["name"],
-            root_path=system_data["root_path"],
-            timeframe=system_data["timeframe"],
+            name=_require_key(system_data, "name", "system_config"),
+            root_path=_require_key(system_data, "root_path", "system_config"),
+            timeframe=_require_key(system_data, "timeframe", "system_config"),
         ),
         paths=_build_model(
             PathsConfig,
             "system_config",
-            clients=paths_data["clients"],
-            logs=paths_data["logs"],
-            cache=paths_data["cache"],
-            history=paths_data["history"],
-            universe=paths_data["universe"],
+            clients=_require_key(paths_data, "clients", "system_config"),
+            logs=_require_key(paths_data, "logs", "system_config"),
+            cache=_require_key(paths_data, "cache", "system_config"),
+            history=_require_key(paths_data, "history", "system_config"),
+            universe=_require_key(paths_data, "universe", "system_config"),
         ),
         runtime=_build_model(
             RuntimeConfig,
             "system_config",
-            cycle_interval_ms=runtime_data["cycle_interval_ms"],
-            ack_timeout_ms=runtime_data["ack_timeout_ms"],
-            retry_max=runtime_data["retry_max"],
-            auto_discover_instances=runtime_data["auto_discover_instances"],
+            cycle_interval_ms=_require_key(runtime_data, "cycle_interval_ms", "system_config"),
+            ack_timeout_ms=_require_key(runtime_data, "ack_timeout_ms", "system_config"),
+            retry_max=_require_key(runtime_data, "retry_max", "system_config"),
+            auto_discover_instances=_require_key(
+                runtime_data,
+                "auto_discover_instances",
+                "system_config",
+            ),
         ),
         instances=tuple(instances),
         risk=_build_model(
             RiskConfig,
             "system_config",
-            max_open_positions_per_instance=risk_data["max_open_positions_per_instance"],
-            max_daily_loss_percent=risk_data["max_daily_loss_percent"],
-            max_drawdown_percent=risk_data["max_drawdown_percent"],
+            max_open_positions_per_instance=_require_key(
+                risk_data,
+                "max_open_positions_per_instance",
+                "system_config",
+            ),
+            max_daily_loss_percent=_require_key(
+                risk_data,
+                "max_daily_loss_percent",
+                "system_config",
+            ),
+            max_drawdown_percent=_require_key(
+                risk_data,
+                "max_drawdown_percent",
+                "system_config",
+            ),
         ),
         analysis=_build_model(
             AnalysisConfig,
             "system_config",
-            lookback_bars=analysis_data["lookback_bars"],
+            lookback_bars=_require_key(analysis_data, "lookback_bars", "system_config"),
         ),
         journal=_build_model(
             JournalConfig,
             "system_config",
-            retention_days=journal_data["retention_days"],
+            retention_days=_require_key(journal_data, "retention_days", "system_config"),
         ),
         dashboard=_build_model(
             DashboardConfig,
             "system_config",
-            refresh_interval_ms=dashboard_data["refresh_interval_ms"],
+            refresh_interval_ms=_require_key(
+                dashboard_data,
+                "refresh_interval_ms",
+                "system_config",
+            ),
         ),
         logging=_build_model(
             LoggingConfig,
             "system_config",
-            level=logging_data["level"],
-            format=logging_data["format"],
+            level=_require_key(logging_data, "level", "system_config"),
+            format=_require_key(logging_data, "format", "system_config"),
         ),
     )
 

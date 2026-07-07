@@ -121,6 +121,16 @@ def test_instance_key_rejects_bool_magic() -> None:
         InstanceKey(account_id="12345", symbol="EURUSD", magic=True)  # type: ignore[arg-type]
 
 
+def test_instance_definition_exposes_instance_key() -> None:
+    instance = InstanceDefinition(
+        account_id="12345",
+        symbol="EURUSD",
+        magic=100001,
+        enabled=True,
+    )
+    assert instance.instance_key == InstanceKey("12345", "EURUSD", 100001)
+
+
 def test_instance_key_is_hashable() -> None:
     key_a = InstanceKey("12345", "EURUSD", 1)
     key_b = InstanceKey("12345", "EURUSD", 1)

@@ -266,7 +266,12 @@ def is_valid_order_action(value: str) -> bool:
 
 
 def is_valid_ack_status(value: str) -> bool:
-    return value in AckStatus._value2member_map_
+    # Ārējais protokols (ACK JSON un trade journal) atļauj tikai SUCCESS, FAILED, REJECTED
+    return value in {
+        AckStatus.SUCCESS.value,
+        AckStatus.FAILED.value,
+        AckStatus.REJECTED.value,
+    }
 
 
 def is_valid_reason_code(value: str) -> bool:

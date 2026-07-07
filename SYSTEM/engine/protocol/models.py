@@ -237,7 +237,7 @@ class InstanceDefinition:
         object.__setattr__(self, "enabled", _require_bool(self.enabled, "instances[].enabled"))
 
     @property
-    def key(self) -> InstanceKey:
+    def instance_key(self) -> InstanceKey:
         return InstanceKey(self.account_id, self.symbol, self.magic)
 
     def to_dict(self) -> dict[str, str | int | bool]:
@@ -377,7 +377,7 @@ class SystemConfig:
                 module="protocol.models",
                 context={"value_type": type(self.instances).__name__},
             )
-        keys = [instance.key.as_tuple() for instance in self.instances]
+        keys = [instance.instance_key.as_tuple() for instance in self.instances]
         if len(keys) != len(set(keys)):
             raise ValidationError(
                 "duplicate instance definitions are not allowed",
