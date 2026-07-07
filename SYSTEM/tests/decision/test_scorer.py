@@ -112,6 +112,18 @@ def test_scoring_compares_without_filtering_candidates() -> None:
     assert result.preferred_side == Side.NONE.value
 
 
+def test_resolve_preferred_side_matches_compare_candidates_with_context() -> None:
+    buy_candidate = _buy_candidate(buy_score=0.8)
+    sell_candidate = _sell_candidate(sell_score=0.5)
+    context = _context()
+
+    assert resolve_preferred_side(buy_candidate, sell_candidate, context=context) == compare_candidates(
+        buy_candidate=buy_candidate,
+        sell_candidate=sell_candidate,
+        context=context,
+    ).preferred_side
+
+
 def test_scoring_does_not_return_block() -> None:
     source = inspect.getsource(compare_candidates)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from engine.decision.reason import build_reason
+from engine.reason import build_reason
 from engine.protocol.constants import (
     REASON_ACCOUNT_NOT_TRADEABLE,
     REASON_RISK_DAILY_LOSS,

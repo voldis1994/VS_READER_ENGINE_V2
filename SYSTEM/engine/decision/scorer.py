@@ -16,6 +16,29 @@ class ScoringResult:
     preferred_side: str
 
 
+def _default_scoring_context() -> AnalysisContext:
+    return AnalysisContext(
+        session="",
+        regime="",
+        news_active=False,
+        context_quality=1.0,
+        trade_environment="NEUTRAL",
+        spread_filter_passed=True,
+    )
+
+
+def _context_adjusted_scores(
+    *,
+    buy_candidate: BuyCandidate,
+    sell_candidate: SellCandidate,
+    context_quality: float,
+) -> tuple[float, float]:
+    return (
+        buy_candidate.buy_score * context_quality,
+        sell_candidate.sell_score * context_quality,
+    )
+
+
 def _resolve_preferred_side_from_scores(
     *,
     buy_valid: bool,
@@ -36,26 +59,17 @@ def _resolve_preferred_side_from_scores(
     return Side.NONE.value
 
 
-def resolve_preferred_side(
-    buy_candidate: BuyCandidate,
-    sell_candidate: SellCandidate,
-) -> str:
-    return _resolve_preferred_side_from_scores(
-        buy_valid=buy_candidate.valid,
-        sell_valid=sell_candidate.valid,
-        buy_score=buy_candidate.buy_score,
-        sell_score=sell_candidate.sell_score,
-    )
-
-
 def compare_candidates(
     *,
     buy_candidate: BuyCandidate,
     sell_candidate: SellCandidate,
     context: AnalysisContext,
 ) -> ScoringResult:
-    buy_score = buy_candidate.buy_score * context.context_quality
-    sell_score = sell_candidate.sell_score * context.context_quality
+    buy_score, sell_score = _context_adjusted_scores(
+        buy_candidate=buy_candidate,
+        sell_candidate=sell_candidate,
+        context_quality=context.context_quality,
+    )
     preferred_side = _resolve_preferred_side_from_scores(
         buy_valid=buy_candidate.valid,
         sell_valid=sell_candidate.valid,
@@ -68,3 +82,16 @@ def compare_candidates(
         score_delta=buy_score - sell_score,
         preferred_side=preferred_side,
     )
+
+
+def resolve_preferred_side(
+    buy_candidate: BuyCandidate,
+    sell_candidate: SellCandidate,
+    *,
+    context: AnalysisContext | None = None,
+) -> str:
+    return compare_candidates(
+        buy_candidate=buy_candidate,
+        sell_candidate=sell_candidate,
+        context=context or _default_scoring_context(),
+    ).preferred_side

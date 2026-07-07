@@ -19,6 +19,25 @@ class MomentumAnalysis:
     lower_lows: bool
 
 
+@dataclass(frozen=True)
+class TrendAnalysis:
+    trend_direction: str
+    trend_strength: float
+    trend_duration_bars: int
+    higher_highs: bool
+    lower_lows: bool
+
+    @classmethod
+    def from_momentum(cls, momentum: MomentumAnalysis) -> TrendAnalysis:
+        return cls(
+            trend_direction=momentum.trend_direction,
+            trend_strength=momentum.trend_strength,
+            trend_duration_bars=momentum.trend_duration_bars,
+            higher_highs=momentum.higher_highs,
+            lower_lows=momentum.lower_lows,
+        )
+
+
 def _clamp(value: float, min_value: float, max_value: float) -> float:
     return max(min_value, min(max_value, value))
 

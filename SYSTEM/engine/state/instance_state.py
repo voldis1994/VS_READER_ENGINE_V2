@@ -31,6 +31,8 @@ class InstanceState:
     instrument_digits: int = 0
     instrument_point: float = 0.0
     instrument_pip: float = 0.0
+    day_start_balance: float | None = None
+    peak_equity: float | None = None
     cycle_count: int = 0
     last_cycle_utc: str = ""
 
@@ -66,6 +68,21 @@ class InstanceState:
         self.instrument_point = point
         self.instrument_pip = pip
 
+    def update_risk_metrics(
+        self,
+        *,
+        day_start_balance: float | None = None,
+        peak_equity: float | None = None,
+    ) -> None:
+        if day_start_balance is not None:
+            if day_start_balance <= 0:
+                raise _validation_error("day_start_balance must be > 0", day_start_balance=day_start_balance)
+            self.day_start_balance = day_start_balance
+        if peak_equity is not None:
+            if peak_equity <= 0:
+                raise _validation_error("peak_equity must be > 0", peak_equity=peak_equity)
+            self.peak_equity = peak_equity
+
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
             "schema_version": STATE_SCHEMA_VERSION,
@@ -88,6 +105,10 @@ class InstanceState:
             data["position_side"] = self.position_side
         if self.position_volume is not None:
             data["position_volume"] = self.position_volume
+        if self.day_start_balance is not None:
+            data["day_start_balance"] = self.day_start_balance
+        if self.peak_equity is not None:
+            data["peak_equity"] = self.peak_equity
         return data
 
     def save(self, paths: SystemPaths) -> None:
@@ -118,6 +139,12 @@ class InstanceState:
         state.instrument_digits = int(payload.get("instrument_digits", state.instrument_digits))
         state.instrument_point = float(payload.get("instrument_point", state.instrument_point))
         state.instrument_pip = float(payload.get("instrument_pip", state.instrument_pip))
+        day_start_balance = payload.get("day_start_balance")
+        if day_start_balance is not None:
+            state.day_start_balance = float(day_start_balance)
+        peak_equity = payload.get("peak_equity")
+        if peak_equity is not None:
+            state.peak_equity = float(peak_equity)
         state.cycle_count = int(payload.get("cycle_count", state.cycle_count))
         state.last_cycle_utc = str(payload.get("last_cycle_utc", state.last_cycle_utc))
         return state

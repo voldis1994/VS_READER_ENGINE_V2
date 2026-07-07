@@ -98,6 +98,22 @@ def test_analysis_engine_returns_full_analysis_context() -> None:
     assert result.trend.trend_direction in {"UP", "DOWN", "SIDEWAYS"}
 
 
+def test_trend_view_reflects_momentum_without_duplicate_storage() -> None:
+    bars = (
+        _bar(0, 1.1000, 1.1020, 1.0990, 1.1015),
+        _bar(1, 1.1015, 1.1030, 1.1005, 1.1022),
+        _bar(2, 1.1022, 1.1040, 1.1010, 1.1031),
+    )
+    result = run_analysis_engine(_universe(), bars)
+
+    assert result.trend.trend_direction == result.momentum.trend_direction
+    assert result.trend.trend_strength == result.momentum.trend_strength
+    assert result.trend.trend_duration_bars == result.momentum.trend_duration_bars
+    assert result.trend.higher_highs == result.momentum.higher_highs
+    assert result.trend.lower_lows == result.momentum.lower_lows
+    assert "trend" not in result.__dataclass_fields__
+
+
 def test_analysis_engine_does_not_call_decision_or_risk() -> None:
     source = (analysis_engine_module.__file__ and open(analysis_engine_module.__file__, encoding="utf-8").read()) or ""
     assert "engine.decision" not in source
