@@ -3,9 +3,10 @@
 #property version   "1.00"
 #property strict
 
-#include <SYSTEM_Export.mqh>
+#include <SYSTEM_Execution.mqh>
 
 datetime g_last_exported_bar_time = 0;
+string g_last_processed_command_id = "";
 
 int OnInit()
 {
@@ -26,17 +27,48 @@ int OnInit()
 
 void OnTick()
 {
-   if(!SYSTEM_IsNewM1Bar(Symbol(), g_last_exported_bar_time))
-      return;
-
    string account_id = IntegerToString(AccountNumber());
-   if(!SYSTEM_ExportMarketAndSensor(account_id, Symbol(), MagicNumber))
+   string symbol = Symbol();
+   int magic = MagicNumber;
+
+   if(SYSTEM_IsNewM1Bar(symbol, g_last_exported_bar_time))
    {
-      Print("SYSTEM export failed for ", Symbol(), " magic=", MagicNumber);
-      return;
+      if(!SYSTEM_ExportMarketAndSensor(account_id, symbol, magic))
+      {
+         Print("SYSTEM export failed for ", symbol, " magic=", magic);
+         return;
+      }
+
+      if(!SYSTEM_ExportStatus(account_id))
+      {
+         Print("SYSTEM status export failed for account ", account_id);
+         return;
+      }
+
+      if(!SYSTEM_ExportUniverse(account_id))
+      {
+         Print("SYSTEM universe export failed for account ", account_id);
+         return;
+      }
+
+      g_last_exported_bar_time = iTime(symbol, PERIOD_M1, 0);
    }
 
-   g_last_exported_bar_time = iTime(Symbol(), PERIOD_M1, 0);
+   SYSTEM_AckResult ack_result;
+   string processed_command_id = "";
+   string error_message = "";
+   if(SYSTEM_TryExecutePendingControl(
+      account_id,
+      symbol,
+      magic,
+      g_last_processed_command_id,
+      processed_command_id,
+      ack_result,
+      error_message
+   ))
+   {
+      g_last_processed_command_id = processed_command_id;
+   }
 }
 
 void OnDeinit(const int reason)

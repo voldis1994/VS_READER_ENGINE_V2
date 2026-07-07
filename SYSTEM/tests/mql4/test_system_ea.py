@@ -15,8 +15,13 @@ def export_source() -> str:
     return mql_source.load_mqh("SYSTEM_Export.mqh")
 
 
-def test_system_ea_includes_export_module(ea_source: str) -> None:
-    assert "#include <SYSTEM_Export.mqh>" in ea_source
+@pytest.fixture
+def execution_source() -> str:
+    return mql_source.load_mqh("SYSTEM_Execution.mqh")
+
+
+def test_system_ea_includes_execution_module(ea_source: str) -> None:
+    assert "#include <SYSTEM_Execution.mqh>" in ea_source
 
 
 def test_system_ea_requires_m1_timeframe_on_init(ea_source: str) -> None:
@@ -35,22 +40,47 @@ def test_system_ea_exports_on_new_m1_bar(ea_source: str) -> None:
     assert "g_last_exported_bar_time" in ea_source
 
 
+def test_system_ea_exports_status_and_universe_on_new_m1_bar(ea_source: str) -> None:
+    assert "SYSTEM_ExportStatus" in ea_source
+    assert "SYSTEM_ExportUniverse" in ea_source
+
+
 def test_system_ea_uses_account_symbol_and_magic_for_export(ea_source: str) -> None:
     assert "AccountNumber()" in ea_source
     assert "Symbol()" in ea_source
     assert "MagicNumber" in ea_source
 
 
-def test_system_ea_does_not_perform_analysis(ea_source: str, export_source: str) -> None:
-    combined = f"{ea_source}\n{export_source}"
+def test_system_ea_processes_pending_control_on_tick(ea_source: str) -> None:
+    assert "SYSTEM_TryExecutePendingControl" in ea_source
+    assert "g_last_processed_command_id" in ea_source
+
+
+def test_system_ea_does_not_perform_analysis(
+    ea_source: str,
+    export_source: str,
+    execution_source: str,
+) -> None:
+    combined = f"{ea_source}\n{export_source}\n{execution_source}"
     assert "engine.analysis" not in combined
     assert "run_analysis_engine" not in combined
     assert "iCustom" not in combined
     assert "iMA" not in combined
     assert "iRSI" not in combined
-    assert "OrderSend" not in combined
     body = mql_source.function_body(export_source, "SYSTEM_ExportPerformsAnalysis")
     assert "false" in body.lower()
+    execution_body = mql_source.function_body(execution_source, "SYSTEM_ExecutionPerformsAnalysis")
+    assert "false" in execution_body.lower()
+
+
+def test_system_ea_delegates_order_execution_to_execution_module(
+    ea_source: str,
+    execution_source: str,
+) -> None:
+    assert "OrderSend" not in ea_source
+    assert "OrderModify" not in ea_source
+    assert "OrderClose" not in ea_source
+    assert "OrderSend" in execution_source
 
 
 def test_system_ea_export_module_writes_with_atomic_io(export_source: str) -> None:
