@@ -13,6 +13,7 @@ from engine.core.clock import format_utc_timestamp, now_utc, utc_now
 from engine.core.instance import Instance, ensure_unique_instance_keys
 from engine.core.config import load_system_config, parse_config_payload
 from engine.core.atomic_io import atomic_read_text, atomic_write_json, atomic_write_text, is_file_stable
+from engine.core.logging_setup import log_event, setup_account_logger, setup_system_logger
 
 __all__ = [
     "format_utc_timestamp",
@@ -35,4 +36,7 @@ __all__ = [
     "atomic_write_json",
     "atomic_write_text",
     "is_file_stable",
+    "setup_system_logger",
+    "setup_account_logger",
+    "log_event",
 ]
