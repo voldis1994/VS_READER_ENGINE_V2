@@ -5,12 +5,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MQL4_INCLUDE_DIR = REPO_ROOT / "mql4" / "Include"
+MQL4_EXPERTS_DIR = REPO_ROOT / "mql4" / "Experts"
 
 
 def load_mqh(filename: str) -> str:
     path = MQL4_INCLUDE_DIR / filename
     if not path.exists():
         raise FileNotFoundError(f"missing mql4 include file: {path}")
+    return path.read_text(encoding="utf-8")
+
+
+def load_mq4(filename: str) -> str:
+    path = MQL4_EXPERTS_DIR / filename
+    if not path.exists():
+        raise FileNotFoundError(f"missing mql4 expert file: {path}")
     return path.read_text(encoding="utf-8")
 
 
@@ -23,7 +31,7 @@ def parse_define(source: str, name: str) -> str:
 
 def public_function_names(source: str) -> list[str]:
     pattern = re.compile(
-        r"^(?:bool|string)\s+(SYSTEM_[A-Za-z0-9_]+)\s*\(",
+        r"^(?:void|bool|string|int|double|datetime)\s+(SYSTEM_[A-Za-z0-9_]+)\s*\(",
         re.MULTILINE,
     )
     return pattern.findall(source)
@@ -31,7 +39,7 @@ def public_function_names(source: str) -> list[str]:
 
 def function_body(source: str, name: str) -> str:
     match = re.search(
-        rf"(?:bool|string)\s+{re.escape(name)}\s*\([^{{]*\)\s*\{{",
+        rf"(?:void|bool|string|int|double|datetime)\s+{re.escape(name)}\s*\([^{{]*\)\s*\{{",
         source,
     )
     if match is None:
