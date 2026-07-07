@@ -25,14 +25,23 @@ from engine.normalizer.spread_model import SpreadModelSnapshot, update_spread_mo
 from engine.protocol.constants import (
     Decision,
     ErrorType,
+    OrderAction,
     REASON_ACCOUNT_NOT_TRADEABLE,
     RiskResult,
+    Side,
 )
 from engine.protocol.errors import DataIOError, SystemError
 from engine.protocol.models import SensorReading, StatusRecord, UniverseRecord
 from engine.protocol.parser import parse_sensor_csv, parse_universe
 from engine.reason import build_reason
 from engine.risk.engine import RiskEngineResult, RiskEngineTradeParams, run_risk_engine
+from engine.risk.trade_management import (
+    OpenPosition,
+    TradeManagementConfig,
+    TradeManagementResult,
+    evaluate_trade_management,
+)
+from engine.state.instance_state import InstanceState
 from engine.state.memory import InstanceMemory
 from engine.validator.market_validator import ValidationResult, validate_market_csv
 from engine.validator.sensor_validator import validate_sensor_csv
@@ -44,6 +53,11 @@ MODULE_NAME = "core.cycle"
 DEFAULT_MAX_RISK_PER_TRADE_PERCENT = 1.0
 DEFAULT_VOLUME_STEP = 0.01
 DEFAULT_MAX_STOP_LOSS_PIPS = 100.0
+DEFAULT_BREAKEVEN_PROGRESS_RATIO = 0.5
+DEFAULT_PARTIAL_CLOSE_PROGRESS_RATIO = 0.75
+DEFAULT_PARTIAL_CLOSE_VOLUME_RATIO = 0.5
+DEFAULT_TIME_STOP_MAX_BARS = 120
+DEFAULT_POSITION_BARS_OPEN = 1
 
 
 @dataclass(frozen=True)
@@ -67,6 +81,74 @@ class InstanceCycleResult:
     trade_executed: bool = False
     ack_latency_ms: int | None = None
     performance_timings: CycleTimingSnapshot | None = None
+
+
+def build_trade_management_config(
+    trade_params: RiskEngineTradeParams,
+    *,
+    trailing_buffer: float,
+) -> TradeManagementConfig:
+    return TradeManagementConfig(
+        breakeven_progress_ratio=DEFAULT_BREAKEVEN_PROGRESS_RATIO,
+        trailing_buffer=trailing_buffer,
+        partial_close_progress_ratio=DEFAULT_PARTIAL_CLOSE_PROGRESS_RATIO,
+        partial_close_volume_ratio=DEFAULT_PARTIAL_CLOSE_VOLUME_RATIO,
+        time_stop_max_bars=DEFAULT_TIME_STOP_MAX_BARS,
+        volume_step=trade_params.volume_step,
+    )
+
+
+def resolve_open_position_from_state(instance_state: InstanceState) -> OpenPosition | None:
+    if (
+        instance_state.open_ticket is None
+        or instance_state.position_side is None
+        or instance_state.position_volume is None
+        or instance_state.position_entry_price is None
+        or instance_state.position_stop_loss is None
+        or instance_state.position_take_profit is None
+    ):
+        return None
+
+    return OpenPosition(
+        ticket=instance_state.open_ticket,
+        side=instance_state.position_side,
+        entry_price=instance_state.position_entry_price,
+        stop_loss=instance_state.position_stop_loss,
+        take_profit=instance_state.position_take_profit,
+        volume=instance_state.position_volume,
+        bars_open=DEFAULT_POSITION_BARS_OPEN,
+    )
+
+
+def run_instance_trade_management_phase(
+    *,
+    instance_memory: InstanceMemory,
+    market_bars: tuple[NormalizedMarketBar, ...],
+    runtime: LiveRuntime,
+    trade_params: RiskEngineTradeParams | None = None,
+) -> TradeManagementResult:
+    resolved_trade_params = trade_params or build_risk_trade_params()
+    position = resolve_open_position_from_state(instance_memory.instance_state)
+    structure = resolve_structure_levels(market_bars)
+    digits = instance_memory.instance_state.instrument_digits
+    if digits <= 0 and market_bars:
+        digits = market_bars[-1].digits
+
+    return evaluate_trade_management(
+        position=position,
+        current_price=market_bars[-1].close,
+        swing_low=structure.swing_low,
+        swing_high=structure.swing_high,
+        config=build_trade_management_config(
+            resolved_trade_params,
+            trailing_buffer=runtime.config.analysis.stop_loss_buffer,
+        ),
+        digits=digits,
+    )
+
+
+def should_execute_management_action(order_action: str) -> bool:
+    return order_action in {OrderAction.MODIFY.value, OrderAction.CLOSE.value}
 
 
 def build_risk_trade_params() -> RiskEngineTradeParams:
@@ -466,6 +548,14 @@ def run_instance_cycle(
         timestamp_utc=resolved_timestamp,
     )
 
+    resolved_trade_params = trade_params or build_risk_trade_params()
+    management_result = run_instance_trade_management_phase(
+        instance_memory=instance_memory,
+        market_bars=market_bars,
+        runtime=runtime,
+        trade_params=resolved_trade_params,
+    )
+
     execution_result: ExecutionResult | None = None
     trade_executed = False
     if runtime.allow_control_writes:
@@ -477,6 +567,7 @@ def run_instance_cycle(
             decision_result=decision_result,
             risk_engine_result=risk_engine_result,
             runtime=runtime.config.runtime,
+            management_result=management_result,
             timestamp_utc=resolved_timestamp,
         )
         ack_latency_ms = int((time.monotonic() - execution_started) * 1000)
@@ -484,6 +575,10 @@ def run_instance_cycle(
             runtime=runtime,
             decision_result=decision_result,
             risk_engine_result=risk_engine_result,
+        ) or (
+            execution_result is not None
+            and should_execute_management_action(execution_result.order_command.action)
+            and execution_result.trade_intent_logged
         )
     else:
         execution_result = None

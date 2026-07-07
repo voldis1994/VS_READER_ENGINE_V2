@@ -53,10 +53,20 @@ def test_instance_state_persist_and_load(tmp_path) -> None:
 def test_instance_state_clears_position_fields_after_close(tmp_path) -> None:
     instance = Instance(account_id="12345", symbol="EURUSD", magic=100001)
     state = InstanceState(instance=instance)
-    state.update_position(open_ticket=900001, position_side="SELL", position_volume=0.3)
+    state.update_position(
+        open_ticket=900001,
+        position_side="SELL",
+        position_volume=0.3,
+        entry_price=1.10500,
+        stop_loss=1.10700,
+        take_profit=1.10100,
+    )
     state.clear_position()
 
     payload = state.to_dict()
     assert "open_ticket" not in payload
     assert "position_side" not in payload
     assert "position_volume" not in payload
+    assert "position_entry_price" not in payload
+    assert "position_stop_loss" not in payload
+    assert "position_take_profit" not in payload

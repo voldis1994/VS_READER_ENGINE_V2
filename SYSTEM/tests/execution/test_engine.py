@@ -21,9 +21,11 @@ from engine.execution.engine import (
     build_trade_intent_params,
     execution_engine_performs_analysis,
     log_ack_failure,
+    resolve_entry_price_for_open,
     run_execution_engine,
     wait_for_ack,
 )
+from engine.risk.trade_management import TradeManagementResult
 from engine.journal.error_journal import build_error_journal_path
 from engine.journal.trade_journal import INTENT_REASON_PREFIX, build_trade_journal_path
 from engine.normalizer.market_normalizer import NormalizedMarketBar
@@ -303,13 +305,123 @@ def test_apply_ack_to_instance_state_updates_execution_and_position_on_success_o
         ticket=555,
     )
 
-    apply_ack_to_instance_state(state, order_command, ack_record)
+    apply_ack_to_instance_state(
+        state,
+        order_command,
+        ack_record,
+        entry_price=1.10310,
+    )
 
     assert state.last_command_id == FIXED_COMMAND_ID
     assert state.last_ack_status == AckStatus.SUCCESS.value
     assert state.open_ticket == 555
     assert state.position_side == Side.BUY.value
     assert state.position_volume == pytest.approx(0.1)
+    assert state.position_entry_price == pytest.approx(1.10310)
+    assert state.position_stop_loss == pytest.approx(1.09880)
+    assert state.position_take_profit == pytest.approx(1.11170)
+
+
+def test_apply_ack_to_instance_state_updates_position_levels_on_success_modify() -> None:
+    state = _instance_state()
+    state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.1,
+        entry_price=1.10310,
+        stop_loss=1.09880,
+        take_profit=1.11170,
+    )
+    order_command = OrderCommand(
+        command_id="cmd-modify-1",
+        action=OrderAction.MODIFY.value,
+        reason="TRADE_MANAGEMENT_BREAKEVEN: stop loss moved to entry",
+        decision_id="decision-123",
+        side=Side.BUY.value,
+        stop_loss=1.10310,
+        take_profit=1.11170,
+        ticket=555,
+    )
+    ack_record = MagicMock(
+        command_id="cmd-modify-1",
+        status=AckStatus.SUCCESS.value,
+        ticket=555,
+    )
+
+    apply_ack_to_instance_state(state, order_command, ack_record)
+
+    assert state.position_stop_loss == pytest.approx(1.10310)
+    assert state.position_take_profit == pytest.approx(1.11170)
+    assert state.open_ticket == 555
+
+
+def test_apply_ack_to_instance_state_clears_position_on_success_close() -> None:
+    state = _instance_state()
+    state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.1,
+        entry_price=1.10310,
+        stop_loss=1.09880,
+        take_profit=1.11170,
+    )
+    order_command = OrderCommand(
+        command_id="cmd-close-1",
+        action=OrderAction.CLOSE.value,
+        reason="TRADE_MANAGEMENT_TIME_STOP: maximum bars in trade reached",
+        decision_id="decision-123",
+        side=Side.BUY.value,
+        volume=0.1,
+        ticket=555,
+    )
+    ack_record = MagicMock(
+        command_id="cmd-close-1",
+        status=AckStatus.SUCCESS.value,
+        ticket=555,
+    )
+
+    apply_ack_to_instance_state(state, order_command, ack_record)
+
+    assert state.open_ticket is None
+    assert state.position_side is None
+    assert state.position_volume is None
+    assert state.position_entry_price is None
+
+
+def test_apply_ack_to_instance_state_reduces_volume_on_partial_close() -> None:
+    state = _instance_state()
+    state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.1,
+        entry_price=1.10310,
+        stop_loss=1.09880,
+        take_profit=1.11170,
+    )
+    order_command = OrderCommand(
+        command_id="cmd-close-partial",
+        action=OrderAction.CLOSE.value,
+        reason="TRADE_MANAGEMENT_PARTIAL_CLOSE: partial volume close triggered",
+        decision_id="decision-123",
+        side=Side.BUY.value,
+        volume=0.05,
+        ticket=555,
+    )
+    ack_record = MagicMock(
+        command_id="cmd-close-partial",
+        status=AckStatus.SUCCESS.value,
+        ticket=555,
+    )
+
+    apply_ack_to_instance_state(state, order_command, ack_record)
+
+    assert state.open_ticket == 555
+    assert state.position_volume == pytest.approx(0.05)
+
+
+def test_resolve_entry_price_for_open_uses_buy_candidate() -> None:
+    entry_price = resolve_entry_price_for_open(_buy_decision_result(), _open_order_command())
+    assert entry_price == pytest.approx(1.10310)
 
 
 def test_apply_ack_to_instance_state_updates_execution_only_for_failed_open() -> None:
@@ -427,6 +539,9 @@ def test_run_execution_engine_buy_allow_success_updates_control_state_and_trade_
     assert state.open_ticket == 555
     assert state.position_side == Side.BUY.value
     assert state.position_volume == pytest.approx(0.1)
+    assert state.position_entry_price == pytest.approx(1.10310)
+    assert state.position_stop_loss == pytest.approx(1.09880)
+    assert state.position_take_profit == pytest.approx(1.11170)
 
     journal_lines = build_trade_journal_path(paths, instance).read_text(encoding="utf-8").splitlines()
     assert len(journal_lines) == 1
@@ -588,6 +703,48 @@ def test_run_execution_engine_none_action_publishes_control_without_ack_or_trade
     control = parse_control(build_control_path(paths, instance).read_text(encoding="utf-8"))
     assert control.action == OrderAction.NONE.value
     assert control.reason == "WAIT: equal scores"
+
+
+def test_run_execution_engine_prefers_trade_management_modify_before_wait_decision(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_fixed_command_id(monkeypatch)
+    paths = SystemPaths(root_path=tmp_path)
+    instance = _instance()
+    state = _instance_state()
+    state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.1,
+        entry_price=1.10310,
+        stop_loss=1.09880,
+        take_profit=1.11170,
+    )
+    _write_ack(paths, instance, _ack_payload(status=AckStatus.SUCCESS.value, ticket=555))
+
+    management_result = TradeManagementResult(
+        action=OrderAction.MODIFY.value,
+        reason="TRADE_MANAGEMENT_BREAKEVEN: stop loss moved to entry",
+        stop_loss=1.10310,
+        take_profit=1.11170,
+    )
+
+    result = run_execution_engine(
+        paths=paths,
+        instance=instance,
+        instance_state=state,
+        decision_result=_wait_decision_result(),
+        risk_engine_result=_allow_risk_result(),
+        runtime=_runtime_config(),
+        management_result=management_result,
+        timestamp_utc="2026-07-07T06:00:00.000Z",
+    )
+
+    assert result.order_command.action == OrderAction.MODIFY.value
+    assert result.order_command.ticket == 555
+    assert result.trade_intent_logged is True
+    assert state.position_stop_loss == pytest.approx(1.10310)
 
 
 def test_execution_engine_performs_analysis_returns_false() -> None:

@@ -26,6 +26,9 @@ class InstanceState:
     open_ticket: int | None = None
     position_side: str | None = None
     position_volume: float | None = None
+    position_entry_price: float | None = None
+    position_stop_loss: float | None = None
+    position_take_profit: float | None = None
     last_command_id: str = ""
     last_ack_status: str = AckStatus.TIMEOUT.value
     instrument_digits: int = 0
@@ -49,7 +52,16 @@ class InstanceState:
         self.last_command_id = command_id
         self.last_ack_status = ack_status
 
-    def update_position(self, *, open_ticket: int, position_side: str, position_volume: float) -> None:
+    def update_position(
+        self,
+        *,
+        open_ticket: int,
+        position_side: str,
+        position_volume: float,
+        entry_price: float | None = None,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+    ) -> None:
         if open_ticket < 0:
             raise _validation_error("open_ticket must be >= 0", open_ticket=open_ticket)
         if position_volume <= 0:
@@ -57,11 +69,35 @@ class InstanceState:
         self.open_ticket = open_ticket
         self.position_side = position_side
         self.position_volume = position_volume
+        if entry_price is not None:
+            self.position_entry_price = entry_price
+        if stop_loss is not None:
+            self.position_stop_loss = stop_loss
+        if take_profit is not None:
+            self.position_take_profit = take_profit
+
+    def update_position_levels(self, *, stop_loss: float, take_profit: float) -> None:
+        self.position_stop_loss = stop_loss
+        self.position_take_profit = take_profit
+
+    def reduce_position_volume(self, *, volume: float) -> None:
+        if volume <= 0:
+            raise _validation_error("close volume must be > 0", volume=volume)
+        if self.position_volume is None:
+            raise _validation_error("cannot reduce position volume without an open position")
+        remaining = self.position_volume - volume
+        if remaining <= 0:
+            self.clear_position()
+            return
+        self.position_volume = remaining
 
     def clear_position(self) -> None:
         self.open_ticket = None
         self.position_side = None
         self.position_volume = None
+        self.position_entry_price = None
+        self.position_stop_loss = None
+        self.position_take_profit = None
 
     def update_instrument(self, *, digits: int, point: float, pip: float) -> None:
         self.instrument_digits = digits
@@ -105,6 +141,12 @@ class InstanceState:
             data["position_side"] = self.position_side
         if self.position_volume is not None:
             data["position_volume"] = self.position_volume
+        if self.position_entry_price is not None:
+            data["position_entry_price"] = self.position_entry_price
+        if self.position_stop_loss is not None:
+            data["position_stop_loss"] = self.position_stop_loss
+        if self.position_take_profit is not None:
+            data["position_take_profit"] = self.position_take_profit
         if self.day_start_balance is not None:
             data["day_start_balance"] = self.day_start_balance
         if self.peak_equity is not None:
@@ -134,6 +176,15 @@ class InstanceState:
         state.open_ticket = payload.get("open_ticket")
         state.position_side = payload.get("position_side")
         state.position_volume = payload.get("position_volume")
+        position_entry_price = payload.get("position_entry_price")
+        if position_entry_price is not None:
+            state.position_entry_price = float(position_entry_price)
+        position_stop_loss = payload.get("position_stop_loss")
+        if position_stop_loss is not None:
+            state.position_stop_loss = float(position_stop_loss)
+        position_take_profit = payload.get("position_take_profit")
+        if position_take_profit is not None:
+            state.position_take_profit = float(position_take_profit)
         state.last_command_id = str(payload.get("last_command_id", state.last_command_id))
         state.last_ack_status = str(payload.get("last_ack_status", state.last_ack_status))
         state.instrument_digits = int(payload.get("instrument_digits", state.instrument_digits))

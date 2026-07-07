@@ -14,11 +14,13 @@ from engine.core.cycle import (
     build_account_block_reason,
     build_risk_trade_params,
     load_instance_cycle_data,
+    resolve_open_position_from_state,
     resolve_structure_levels,
     resolve_use_global_universe,
     run_instance_cycle,
     run_instance_decision_phase,
     run_instance_risk_phase,
+    run_instance_trade_management_phase,
     should_execute_trade,
     update_instance_instrument_state,
     update_instance_spread_model,
@@ -27,6 +29,8 @@ from engine.core.cycle import (
     validate_status_for_cycle,
     validate_universe_for_cycle,
 )
+from engine.execution.engine import ExecutionResult
+from engine.execution.command import OrderCommand
 from engine.execution.control_writer import build_control_path
 from engine.journal.decision_journal import build_decision_journal_path
 from engine.journal.error_journal import build_error_journal_path
@@ -35,9 +39,11 @@ from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.protocol.constants import (
     Decision,
     ErrorType,
+    OrderAction,
     PROTOCOL_SCHEMA_VERSION,
     REASON_ACCOUNT_NOT_TRADEABLE,
     RiskResult,
+    Side,
 )
 from engine.protocol.parser import parse_decision_journal_line, parse_error_journal_line
 from engine.protocol.models import StatusRecord, UniverseRecord
@@ -407,3 +413,90 @@ def test_run_instance_cycle_account_not_tradeable_produces_block_without_trade(t
     assert result.decision_result.decision == Decision.BLOCK.value
     assert REASON_ACCOUNT_NOT_TRADEABLE in result.decision_result.reason
     assert not result.trade_executed
+
+
+def test_run_instance_trade_management_phase_returns_modify_for_breakeven_progress(
+    tmp_path: Path,
+) -> None:
+    runtime, instance = _startup_runtime(tmp_path)
+    instance_memory = runtime.memory.get_or_create(instance)
+    instance_memory.instance_state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.1,
+        entry_price=1.10000,
+        stop_loss=1.09800,
+        take_profit=1.10400,
+    )
+    loaded = load_instance_cycle_data(runtime.paths, instance, use_global_universe=False)
+    market_bars = validate_market_for_cycle(loaded.market_raw)
+    assert not isinstance(market_bars, ValidationResult)
+
+    bullish_bars = (
+        *market_bars[:-1],
+        NormalizedMarketBar(
+            time_utc=market_bars[-1].time_utc,
+            open=1.10180,
+            high=1.10220,
+            low=1.10150,
+            close=1.10200,
+            volume=market_bars[-1].volume,
+            symbol=market_bars[-1].symbol,
+            timeframe=market_bars[-1].timeframe,
+            digits=market_bars[-1].digits,
+            point=market_bars[-1].point,
+            bar_index=market_bars[-1].bar_index,
+        ),
+    )
+
+    management_result = run_instance_trade_management_phase(
+        instance_memory=instance_memory,
+        market_bars=bullish_bars,
+        runtime=runtime,
+    )
+
+    assert management_result.action == OrderAction.MODIFY.value
+    assert management_result.stop_loss is not None
+    assert management_result.stop_loss > 1.09800
+    assert management_result.reason.startswith("TRADE_MANAGEMENT_")
+
+
+def test_run_instance_cycle_passes_trade_management_to_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime, instance = _startup_runtime(tmp_path)
+    instance_memory = runtime.memory.get_or_create(instance)
+    instance_memory.instance_state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.1,
+        entry_price=1.10000,
+        stop_loss=1.09800,
+        take_profit=1.10400,
+    )
+    captured: dict[str, object] = {}
+
+    def _mock_run_execution_engine(**kwargs: object) -> ExecutionResult:
+        captured["management_result"] = kwargs.get("management_result")
+        return ExecutionResult(
+            order_command=OrderCommand(
+                command_id="mgmt-cmd",
+                action=OrderAction.NONE.value,
+                reason="",
+                decision_id="decision-1",
+            ),
+            control_published=True,
+            trade_intent_logged=False,
+            ack_interpretation=None,
+            trade_journal_entry=None,
+            state_updated=False,
+        )
+
+    monkeypatch.setattr("engine.core.cycle.run_execution_engine", _mock_run_execution_engine)
+
+    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+
+    assert result.completed
+    assert captured["management_result"] is not None
+    assert resolve_open_position_from_state(instance_memory.instance_state) is not None

@@ -18,17 +18,18 @@ from engine.execution.ack_reader import (
     interpret_ack,
     read_ack_for_command,
 )
-from engine.execution.command import OrderCommand, build_order_command
+from engine.execution.command import OrderCommand, resolve_order_command
 from engine.execution.control_writer import publish_control
 from engine.journal.error_journal import log_error
 from engine.journal.trade_journal import TradeIntentParams, log_trade_ack, log_trade_intent
-from engine.protocol.constants import AckStatus, ErrorType, OrderAction, TradeEvent
+from engine.protocol.constants import AckStatus, ErrorType, OrderAction, Side, TradeEvent
 from engine.protocol.models import AckRecord, RuntimeConfig, TradeJournalEntry
 from engine.state.instance_state import InstanceState
 
 if TYPE_CHECKING:
     from engine.decision.engine import DecisionResult
     from engine.risk.engine import RiskEngineResult
+    from engine.risk.trade_management import TradeManagementResult
 
 MODULE_NAME = "execution.engine"
 
@@ -74,18 +75,35 @@ def wait_for_ack(
     return ack_available()
 
 
+def resolve_entry_price_for_open(
+    decision_result: DecisionResult,
+    order_command: OrderCommand,
+) -> float | None:
+    if order_command.action != OrderAction.OPEN.value:
+        return None
+    if order_command.side == Side.BUY.value and decision_result.buy_candidate.valid:
+        return decision_result.buy_candidate.entry_price
+    if order_command.side == Side.SELL.value and decision_result.sell_candidate.valid:
+        return decision_result.sell_candidate.entry_price
+    return None
+
+
 def apply_ack_to_instance_state(
     instance_state: InstanceState,
     order_command: OrderCommand,
     ack_record: AckRecord,
+    *,
+    entry_price: float | None = None,
 ) -> None:
     instance_state.update_execution(
         command_id=ack_record.command_id,
         ack_status=ack_record.status,
     )
+    if ack_record.status != AckStatus.SUCCESS.value:
+        return
+
     if (
-        ack_record.status == AckStatus.SUCCESS.value
-        and order_command.action == OrderAction.OPEN.value
+        order_command.action == OrderAction.OPEN.value
         and ack_record.ticket is not None
         and order_command.side is not None
         and order_command.volume is not None
@@ -94,7 +112,32 @@ def apply_ack_to_instance_state(
             open_ticket=ack_record.ticket,
             position_side=order_command.side,
             position_volume=order_command.volume,
+            entry_price=entry_price,
+            stop_loss=order_command.stop_loss,
+            take_profit=order_command.take_profit,
         )
+        return
+
+    if (
+        order_command.action == OrderAction.MODIFY.value
+        and order_command.stop_loss is not None
+        and order_command.take_profit is not None
+    ):
+        instance_state.update_position_levels(
+            stop_loss=order_command.stop_loss,
+            take_profit=order_command.take_profit,
+        )
+        return
+
+    if order_command.action == OrderAction.CLOSE.value:
+        if (
+            order_command.volume is not None
+            and instance_state.position_volume is not None
+            and order_command.volume < instance_state.position_volume
+        ):
+            instance_state.reduce_position_volume(volume=order_command.volume)
+        else:
+            instance_state.clear_position()
 
 
 def log_ack_failure(
@@ -140,6 +183,7 @@ def run_execution_engine(
     decision_result: DecisionResult,
     risk_engine_result: RiskEngineResult,
     runtime: RuntimeConfig,
+    management_result: TradeManagementResult | None = None,
     timestamp_utc: str | None = None,
     started_monotonic: float | None = None,
     monotonic_fn: Callable[[], float] = time.monotonic,
@@ -147,7 +191,13 @@ def run_execution_engine(
     poll_interval_ms: int = 50,
 ) -> ExecutionResult:
     resolved_timestamp = timestamp_utc or now_utc()
-    order_command = build_order_command(decision_result, risk_engine_result)
+    order_command = resolve_order_command(
+        decision_result,
+        risk_engine_result,
+        management_result,
+        ticket=instance_state.open_ticket,
+        side=instance_state.position_side,
+    )
 
     if instance_state.last_command_id:
         validate_control_command_retry(
@@ -212,7 +262,12 @@ def run_execution_engine(
     )
     interpretation = interpret_ack(ack_record)
     log_ack_failure(paths, instance, ack_record)
-    apply_ack_to_instance_state(instance_state, order_command, ack_record)
+    apply_ack_to_instance_state(
+        instance_state,
+        order_command,
+        ack_record,
+        entry_price=resolve_entry_price_for_open(decision_result, order_command),
+    )
     trade_entry = log_trade_ack(
         paths,
         instance,
