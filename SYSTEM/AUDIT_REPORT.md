@@ -1,119 +1,125 @@
-# P01–P05 koda audits
+# P01–P30 arhitektūras audits
 
 **Datums:** 2026-07-07  
-**Apjoms:** P01 (projekta pamats), P02 (konstantes un kļūdas), P03 (modeļi), P04 (parseris), P05 (writer)  
-**Avoti:** `docs/SYSTEM_SPECIFICATION.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/RULES.md`
-
-**Tests:** 106/106 iziet (`tests/protocol/`)
+**Apjoms:** P01–P30  
+**Avoti:** `docs/SYSTEM_SPECIFICATION.md`, `docs/IMPLEMENTATION_PLAN.md`
 
 ---
 
 ## Kopsavilkums
 
-Audits **nav iziets bez arhitektūras problēmām**. Konstatētas 4 būtiskas neatbilstības un 2 mazākas riska zonas. Protokola moduļa slāņošana (constants → errors → models → parser/writer), ciklisko atkarību neesamība un specifikācijas §19–§20 lauku pārklājums modeļos ir korekti. Galvenās problēmas skar kļūdu līgumu parserī, ACK statusu validāciju un publiskā API konsekvenci.
+Audits **nav pilnībā iziets**. Atrastas vairākas būtiskas neatbilstības P21–P30 implementācijā, kas ietekmē:
+
+- atbilstību specifikācijas cache/journal/state principiem,
+- publiskā API konsekvenci starp `state` un `protocol`,
+- dead code/dublēšanas risku.
+
+Kritiskākie punkti: `core/cache.py` faktiski nav integrēts darba plūsmā, `error_journal` nav reāli append-only implementācijas ziņā, un `instance_state` formāts ir nekonsekvents ar esošo protocol state API.
 
 ---
 
-## A1. `parse_system_config` izraisa `KeyError`/`TypeError`, nevis `ProtocolError`
+## A1. P27 cache modulis nav integrēts (dead code + arhitektūras dublēšanās)
 
-| | |
-|---|---|
-| **Smagums** | Augsts |
-| **Vieta** | `engine/protocol/parser.py` — `parse_system_config()` |
-| **Specifikācija** | P04 prasība: nederīgs saturs izraisa `ProtocolError`; §28, §91.3 |
-| **Apraksts** | Top-level sekcijas (`system`, `paths`, `runtime` u.c.) tiek nolasītas ar `_require_key()`, bet iekšējie lauki tiek lasīti ar tiešu indeksēšanu (`item["account_id"]`, `system_data["name"]` u.tml.). Trūkstošs vai nepareiza tipa iekšējais lauks izraisa `KeyError` vai `TypeError`, nevis `ProtocolError`. |
-| **Pierādījums** | `instances: [{}]` → `KeyError: 'account_id'`; `system: "not-a-dict"` → `TypeError`. Citi parseri (`parse_status`, `parse_control` u.c.) izmanto `_require_key()` konsekventi. |
-| **Risks** | Augstāki moduļi (P09 `core/config.py`, P13+ loaderi) nevar uzticami noķert visas protokola kļūdas kā `ProtocolError`; atšķiras no P04 līguma un testēšanas gaidām. |
-| **Ieteikums** | P04 labojums: visām `parse_system_config` iekšējām vērtībām izmantot `_require_key()` un tipu pārbaudes ar `ProtocolError` pārveidi (bez jaunas funkcionalitātes, tikai kļūdu līguma vienotība). |
+**Smagums:** Augsts  
+**Spec/Plāns:** `IMPLEMENTATION_PLAN.md` P27; `SYSTEM_SPECIFICATION.md` §30.5, §75 (cache hash kā I/O optimizācijas mehānisms)
 
----
+### Pierādījumi
 
-## A2. `AckStatus.TIMEOUT` pieļauts ārējā protokolā, kur specifikācija to aizliedz
+- `engine/core/cache.py` ir izveidots, bet netiek izmantots loaderos.
+- Meklējums pēc lietojuma:
+  - `engine/core/__init__.py` importē `core.cache`
+  - citos moduļos `core.cache` netiek importēts.
+- `market_loader.py` un `sensor_loader.py` uztur **atsevišķu iekšējo cache** (`_CacheEntry`, `_content_hash`) neatkarīgi no P27 moduļa.
 
-| | |
-|---|---|
-| **Smagums** | Augsts |
-| **Vieta** | `engine/protocol/constants.py` (`AckStatus`, `is_valid_ack_status`); `engine/protocol/models.py` (`AckRecord`, `TradeJournalEntry`) |
-| **Specifikācija** | §19.5 ACK JSON: `status` ∈ {SUCCESS, FAILED, REJECTED}; §19.9 trade journal: `ack_status` ∈ {SUCCESS, FAILED, REJECTED}; §79.2 `TIMEOUT` ir **iekšējs** `last_ack_status` stāvoklis, nevis MT4 ACK fails |
-| **Apraksts** | `AckStatus` enum satur `TIMEOUT`, un `is_valid_ack_status()` to uzskata par derīgu. `AckRecord` un `TradeJournalEntry` validācija izmanto šo helperi, tādējādi parsers un modeļi pieņem `TIMEOUT` ārējā JSON/JSONL formātā. |
-| **Risks** | P51 (`trade_journal`) un P54 (`ack_reader`) var neapzināti serializēt/pieņemt nederīgu ārējo statusu; MT4 ACK un trade journal neatbildīs specifikācijas robežām; būs jāšķir iekšējais stāvoklis no vadu formāta. |
-| **Ieteikums** | Atseviot ārējā protokola statusu kopu (SUCCESS/FAILED/REJECTED) no iekšējā stāvokļa (`TIMEOUT`); `AckRecord` un `TradeJournalEntry` validācijai izmantot tikai ārējo kopu. |
+### Sekas
+
+- P27 modulis praktiski ir neizmantots produkcijas plūsmā (dead code risks).
+- Vienlaicīgi pastāv 2 cache pieejas (loader-lokālā un `core/cache.py`) → dublēšanās un patch risks nākamajos posmos.
 
 ---
 
-## A3. Publiskais API `engine/protocol/__init__.py` nav konsekvents pēc P05
+## A2. `core/cache.py` neatbilst pašas specifikācijas modified-time prasībai
 
-| | |
-|---|---|
-| **Smagums** | Vidējs |
-| **Vieta** | `engine/protocol/__init__.py` |
-| **Specifikācija** | P02: konstantes un kļūdas ir «eksportējamas» caur `__init__.py`; P05: `protocol` modulis ir «pilnībā pabeigts»; §6: protocol atbild par modeļiem, parsēšanu un rakstīšanu |
-| **Apraksts** | `__init__.py` eksportē tikai P02 saturu (konstantes + `errors`). P03–P05 pievienotie modeļi, parsera un writer funkcijas nav iekļautas `__all__` un nav pieejamas kā `from engine.protocol import ...`. Testi un nākamie moduļi importē tieši no apakšmoduļiem (`engine.protocol.models`, `engine.protocol.parser`, `engine.protocol.writer`). |
-| **Risks** | Divi paralēli importa modeļi vienam modulim; neskaidra publiskā robeža; P13+ implementētāji var neapzināti izvēlēties nekonsekventu importa stilu. |
-| **Ieteikums** | Pēc P05 `__init__.py` jāpapildina ar visu publisko protocol API (modeļi, parse_*, write_*) vai jādokumentē apzināts lēmums par apakšmoduļu importiem. |
+**Smagums:** Vidējs  
+**Spec/Plāns:** `SYSTEM_SPECIFICATION.md` §75 (“hash tiek salīdzināts ar faila modified time; konflikta gadījumā prioritāte ir saturs”)
 
----
+### Pierādījumi
 
-## A4. Nosaukumu standartu nekonsekvence: `key` pret `instance_key`
+- `engine/core/cache.py:32` aprēķina `current_mtime_ns`, bet neizmanto lēmumā.
+- `should_reload(...)` atgriež tikai `cached["hash"] != current_hash`.
+- `modified_ns` tiek glabāts (`write_hash`) un parsēts (`parse_hash_record`), bet faktiski netiek izmantots.
 
-| | |
-|---|---|
-| **Smagums** | Zems–vidējs |
-| **Vieta** | `engine/protocol/models.py` |
-| **Specifikācija** | §92.3 (`snake_case` īpašībām); §92.7 instance atslēga kā `(account_id, symbol, magic)` |
-| **Apraksts** | `InstanceDefinition` izmanto īpašību `.key`, bet visi pārējie modeļi ar instance identitāti izmanto `.instance_key` (`ControlCommand`, `AckRecord`, `InstanceStateRecord`, `SpreadStateRecord`, `DecisionJournalEntry`, `TradeJournalEntry`). |
-| **Risks** | P08 (`core/instance.py`) un P25 (`state/instance_state.py`) izstrādātājiem jāatceras divi dažādi API nosaukumi vienai semantikai. |
-| **Ieteikums** | Vienot uz `instance_key` visos modeļos. |
+### Sekas
+
+- Prasība par hash+mtime salīdzināšanu nav pilnībā realizēta.
+- Modulis satur daļēji “nepabeigtu” loģiku (future patch indicator).
 
 ---
 
-## A5. Dublēti obligāto lauku saraksti `writer.py`
+## A3. P28 Error Journal nav īsti append-only ieviešanas līmenī
 
-| | |
-|---|---|
-| **Smagums** | Zems |
-| **Vieta** | `engine/protocol/writer.py` — `*_REQUIRED_FIELDS`, `required_fields_present()` |
-| **Apraksts** | Obligāto lauku saraksti atkārto specifikācijas §19 laukus un faktiski dublē parsera `_require_key()` izsaukumu sarakstus. Šobrīd galvenokārt izmanto testos (`test_writer.py`). |
-| **Risks** | Shēmas izmaiņas prasīs sinhronizāciju trim vietām (modeļi, parsers, writer konstantes) — patch risks. |
-| **Ieteikums** | Ilgtermīnā lauku metadatus turēt vienā avotā (piem., modeļos vai `constants.py`); nav bloķējošs P05 pabeigšanai. |
+**Smagums:** Augsts  
+**Spec/Plāns:** `IMPLEMENTATION_PLAN.md` P28 (“Append-only”); `SYSTEM_SPECIFICATION.md` §19.10, §65, §1147 (journal faili append-only)
 
----
+### Pierādījumi
 
-## A6. Specifikācijas iekšējā atstarpe: `RuntimeConfig` pret vēlāk minētiem `runtime.*` laukiem
+- `engine/journal/error_journal.py:21-28`:
+  - nolasa visu esošo failu saturu,
+  - pievieno jaunu rindu atmiņā,
+  - pārraksta visu failu ar `atomic_write_text(...)`.
 
-| | |
-|---|---|
-| **Smagums** | Zems (informatīvs) |
-| **Vieta** | `engine/protocol/models.py` — `RuntimeConfig`; `docs/SYSTEM_SPECIFICATION.md` §19.1 pret §78.2, §79.1, §68 |
-| **Apraksts** | `RuntimeConfig` implementē tieši §19.1 laukus (`cycle_interval_ms`, `ack_timeout_ms`, `retry_max`, `auto_discover_instances`). Citās specifikācijas sadaļās minēti arī `retry_delay_ms`, `data_stale_threshold_ms`, `cycle_max_duration_ms`, `metrics_interval_ms`, kas §19.1 tabulā nav. |
-| **Risks** | P09/P10 implementācijā būs jāpaplašina `RuntimeConfig` un/vai jāprecizē specifikācijas §19.1 — potenciāls patch posms. |
-| **Piezīme** | Pašreizējā P03 implementācija ir korekta attiecībā pret §19.1; problēma ir specifikācijas pilnīgumā, nevis lauku interpretācijā. |
+### Sekas
+
+- Semantiski saturs tiek pievienots, bet implementācija ir “read+rewrite whole file”, nevis īsta append pieeja.
+- Pie konkurējošas rakstīšanas iespējami lost-update scenāriji.
+- Lieliem journal failiem aug I/O izmaksas.
 
 ---
 
-## Kas ir kārtībā (pozitīvie atradumi)
+## A4. P25 `instance_state` publiskais API nav konsekvents ar protocol state API
 
-| Kritērijs | Rezultāts |
-|-----------|-----------|
-| Arhitektūras slāņi (§6–§7) | `protocol` neimportē augstākus moduļus; atkarību virziens atbilst |
-| Cikliskas atkarības | Nav (constants ← errors ← models ← parser/writer) |
-| Specifikācijas §19–§20 modeļi | Visi JSON/CSV objekti definēti; kolonnu secība no `MARKET_CSV_COLUMNS` / `SENSOR_CSV_COLUMNS` |
-| Kļūdu hierarhija (P02) | `SystemError` → specializētie tipi; `wrap_exception`, `get_error_type` |
-| Mirušais kods | Nav neizmantotu publisku funkciju produkcijas ceļā; `validate_instance_key` un `required_fields_present` izmanto testi |
-| Nosaukumi (§92) | Moduļi `snake_case`, klases `PascalCase`, konstantes `UPPER_SNAKE_CASE` — atbilst (izņemot A4) |
-| P01 | `requirements.txt` (Python 3.11+, pytest, psutil), `README.md` operacionālais minimums |
-| Round-trip | Writer ↔ parser testi iziet visiem formātiem |
-| Universe aizliegtie lauki | Pārbaudīti parserī (root) un modeļos (`metadata`) |
+**Smagums:** Augsts  
+**Spec/Plāns:** `IMPLEMENTATION_PLAN.md` P25; `SYSTEM_SPECIFICATION.md` §19.6 un §72.3; publiskā API konsekvence
+
+### Pierādījumi
+
+- `engine/state/instance_state.py` raksta state ar papildu laukiem:
+  - `last_command_id`, `last_ack_status`, `instrument_digits`, `instrument_point`, `instrument_pip`, `cycle_count`.
+- `engine/protocol/models.py::InstanceStateRecord` / `parse_instance_state` / `write_instance_state` šos laukus neaptver kā vienotu modeli.
+- Tātad vienā repo pastāv 2 daļēji atšķirīgi “instance state” kontrakti.
+
+### Sekas
+
+- Nekonsekvents publiskais API starp `state` un `protocol` slāņiem.
+- Palielināts risks nākamajiem moduļiem (daži izmantos `state.InstanceState`, citi `protocol.InstanceStateRecord`).
 
 ---
 
-## Secinājums
+## A5. BUY/SELL/WAIT/EDGE arhitektūras gatavība: daļēja, bet nav degradēta uz “parastu MT4 robotu”
 
-P01–P05 ir funkcionāli stabili (106 testi), bet **arhitektūras audits konstatē problēmas**, kas jānovērš pirms P06+ turpināšanas:
+**Smagums:** Novērojums (ne bloķējošs)
 
-1. **A1** — `ProtocolError` līguma pārkāpums `parse_system_config` (obligāti)
-2. **A2** — `TIMEOUT` statusa jaukšana ārējā un iekšējā līmenī (obligāti)
-3. **A3** — nepilnīgs publiskais API `__init__.py` (ieteicams)
-4. **A4** — `key` / `instance_key` nosaukumu vienotība (ieteicams)
+### Secinājums
 
-A5 un A6 ir uzturēšanas un specifikācijas precizēšanas riski, nevis funkcionāli bojājumi pašreizējā posmā.
+- Šajā posmā nav pazīmju, ka analysis moduļi paši sāktu izpildīt trade komandas.
+- `analysis/context.py` un `analysis/structure.py` ģenerē analītisku izvadi, nevis order darbības.
+- Aizliegto importa virzienu pārkāpumi (analysis→decision/risk/execution, loader→analysis/decision/risk/execution) netika konstatēti.
+
+### Piezīme
+
+- Pilna BUY/SELL/WAIT/EDGE plūsmas verifikācija būs iespējama pēc decision/risk/execution posmu ieviešanas.
+
+---
+
+## Kas ir kārtībā
+
+- Cikliskas atkarības acīmredzami netika konstatētas auditētajā P01–P30 modulī.
+- `protocol/__init__.py` publiskais eksports ir plašs un konsekvents.
+- `analysis` slānis šobrīd nav sācis tieši tirgot.
+- Testu kopa lokāli iziet, taču tests šobrīd nepietiekami noķer A1–A4 arhitektūras driftu.
+
+---
+
+## Kopējais secinājums
+
+P01–P30 audits atklāj būtiskas arhitektūras neatbilstības (A1–A4), tāpēc rezultāts nav “pilnībā iziets”.
