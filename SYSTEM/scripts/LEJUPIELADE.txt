@@ -1,0 +1,60 @@
+SYSTEM — ĀTRĀ UZSTĀDĪŠANA UZ JŪSU DATORU
+=====================================
+
+VARIANTS A — Windows (ieteicams, dubultklikšķis)
+-------------------------------------------------
+1. Atveriet šo lapu pārlūkā:
+   https://github.com/voldis1994/VS_READER_ENGINE_V2/tree/cursor/reaudit-fixes-258d/SYSTEM/scripts
+
+2. Lejupielādējiet:
+   - install_windows.bat
+   - install_windows.ps1
+
+3. Noklikšķiniet uz install_windows.bat (labā poga → Run as administrator nav obligāti)
+
+4. Pēc ~2–5 minūtēm viss būs mapē:
+   C:\SYSTEM
+
+
+VARIANTS B — Windows PowerShell (viena komanda)
+-------------------------------------------------
+Atveriet PowerShell un ielīmējiet:
+
+  iwr -useb https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/cursor/reaudit-fixes-258d/SYSTEM/scripts/install_windows.ps1 | iex
+
+VAI ar parametriem:
+
+  Set-ExecutionPolicy Bypass -Scope Process -Force
+  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/cursor/reaudit-fixes-258d/SYSTEM/scripts/install_windows.ps1" -OutFile "$env:TEMP\install_system.ps1"
+  powershell -ExecutionPolicy Bypass -File "$env:TEMP\install_system.ps1" -InstallPath "C:\SYSTEM"
+
+
+VARIANTS C — Ar MT4 failu kopēšanu
+-----------------------------------
+  powershell -ExecutionPolicy Bypass -File install_windows.ps1 `
+    -InstallPath "C:\SYSTEM" `
+    -Mt4DataPath "C:\Users\JŪSU_VĀRDS\AppData\Roaming\MetaQuotes\Terminal\XXXXXXXX\MQL4"
+
+MT4 mapi atrodiet: MT4 → File → Open Data Folder → MQL4
+
+
+VARIANTS D — Git (ja jums jau ir git)
+--------------------------------------
+  git clone -b cursor/reaudit-fixes-258d https://github.com/voldis1994/VS_READER_ENGINE_V2.git
+  xcopy /E /I VS_READER_ENGINE_V2\SYSTEM C:\SYSTEM
+  cd C:\SYSTEM
+  python -m venv .venv
+  .venv\Scripts\activate
+  pip install -r requirements.txt
+  pytest
+
+
+PĒC UZSTĀDĪŠANAS
+----------------
+1. Rediģējiet C:\SYSTEM\config\system.json (account_id, symbol, magic)
+2. MT4: kopējiet mql4\Experts un mql4\Include uz MT4 MQL4 mapi
+3. Aktivizējiet vidi: C:\SYSTEM\.venv\Scripts\activate
+4. Palaidiet: python run_live.py
+
+Repozitorijs: https://github.com/voldis1994/VS_READER_ENGINE_V2
+Zars ar visiem labojumiem: cursor/reaudit-fixes-258d

@@ -14,7 +14,22 @@ Projekta sakne: `C:\SYSTEM`
 
 ## Uzstādīšana
 
-```bash
+### Automātiski (Windows — ieteicams)
+
+1. Lejupielādējiet `scripts/install_windows.bat` un `scripts/install_windows.ps1` no GitHub
+2. Dubultklikšķis uz `install_windows.bat`
+3. Pēc instalācijas viss būs mapē `C:\SYSTEM`
+
+Ar MT4 failu kopēšanu:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_windows.ps1 `
+  -Mt4DataPath "C:\Users\JŪSU_VĀRDS\AppData\Roaming\MetaQuotes\Terminal\XXXXXXXX\MQL4"
+```
+
+Papildu instrukcijas: `scripts/LEJUPIELADE.txt`
+
+### Manuāli
 cd C:\SYSTEM
 python -m venv .venv
 .venv\Scripts\activate
