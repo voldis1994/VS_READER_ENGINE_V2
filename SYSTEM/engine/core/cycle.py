@@ -10,6 +10,7 @@ from engine.core.clock import now_utc
 from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.paths import SystemPaths
+from engine.core.performance import CycleTimingSnapshot, monotonic_elapsed_ms
 from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.execution.engine import ExecutionResult, run_execution_engine
 from engine.journal.decision_journal import log_decision
@@ -65,6 +66,7 @@ class InstanceCycleResult:
     execution_result: ExecutionResult | None = None
     trade_executed: bool = False
     ack_latency_ms: int | None = None
+    performance_timings: CycleTimingSnapshot | None = None
 
 
 def build_risk_trade_params() -> RiskEngineTradeParams:
@@ -267,6 +269,22 @@ def _log_cycle_error(
     )
 
 
+def _build_cycle_timings(
+    *,
+    cycle_started: float,
+    load_duration_ms: int,
+    analysis_duration_ms: int,
+    decision_duration_ms: int,
+) -> CycleTimingSnapshot:
+    return CycleTimingSnapshot(
+        cycle_duration_ms=monotonic_elapsed_ms(cycle_started),
+        load_duration_ms=load_duration_ms,
+        analysis_duration_ms=analysis_duration_ms,
+        decision_duration_ms=decision_duration_ms,
+        io_wait_ms=load_duration_ms,
+    )
+
+
 def _finalize_cycle_state(
     *,
     instance_memory: InstanceMemory,
@@ -295,6 +313,23 @@ def run_instance_cycle(
 ) -> InstanceCycleResult:
     resolved_timestamp = timestamp_utc or now_utc()
     instance_memory = runtime.memory.get_or_create(instance)
+    cycle_started = time.monotonic()
+    load_started = time.monotonic()
+    load_duration_ms = 0
+    analysis_duration_ms = 0
+    decision_duration_ms = 0
+
+    def _cycle_result(**kwargs: object) -> InstanceCycleResult:
+        timings = _build_cycle_timings(
+            cycle_started=cycle_started,
+            load_duration_ms=load_duration_ms or monotonic_elapsed_ms(load_started),
+            analysis_duration_ms=analysis_duration_ms,
+            decision_duration_ms=decision_duration_ms,
+        )
+        return InstanceCycleResult(
+            performance_timings=timings,
+            **kwargs,
+        )
 
     try:
         loaded = load_instance_cycle_data(
@@ -310,12 +345,14 @@ def run_instance_cycle(
             message="failed to load instance cycle data",
             context={"error": str(exc)},
         )
-        return InstanceCycleResult(
+        return _cycle_result(
             instance=instance,
             timestamp_utc=resolved_timestamp,
             completed=False,
             error_logged=True,
         )
+
+    load_duration_ms = monotonic_elapsed_ms(load_started)
 
     market_result = validate_market_for_cycle(loaded.market_raw)
     if isinstance(market_result, ValidationResult):
@@ -325,7 +362,7 @@ def run_instance_cycle(
             message="market validation failed",
             context={"errors": list(market_result.errors)},
         )
-        return InstanceCycleResult(
+        return _cycle_result(
             instance=instance,
             timestamp_utc=resolved_timestamp,
             completed=False,
@@ -341,7 +378,7 @@ def run_instance_cycle(
             message="sensor validation failed",
             context={"errors": list(sensor_result.errors)},
         )
-        return InstanceCycleResult(
+        return _cycle_result(
             instance=instance,
             timestamp_utc=resolved_timestamp,
             completed=False,
@@ -357,7 +394,7 @@ def run_instance_cycle(
             message="status validation failed",
             context={"errors": list(status_result.errors)},
         )
-        return InstanceCycleResult(
+        return _cycle_result(
             instance=instance,
             timestamp_utc=resolved_timestamp,
             completed=False,
@@ -373,7 +410,7 @@ def run_instance_cycle(
             message="universe validation failed",
             context={"errors": list(universe_result.errors)},
         )
-        return InstanceCycleResult(
+        return _cycle_result(
             instance=instance,
             timestamp_utc=resolved_timestamp,
             completed=False,
@@ -391,6 +428,7 @@ def run_instance_cycle(
     )
 
     block_reason = build_account_block_reason(status)
+    analysis_started = time.monotonic()
     try:
         decision_result = run_instance_decision_phase(
             universe=universe,
@@ -400,6 +438,8 @@ def run_instance_cycle(
             runtime=runtime,
             block_reason=block_reason,
         )
+        analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
+        risk_started = time.monotonic()
         risk_engine_result = run_instance_risk_phase(
             decision_result=decision_result,
             instance_memory=instance_memory,
@@ -408,8 +448,10 @@ def run_instance_cycle(
             runtime=runtime,
             trade_params=trade_params,
         )
+        decision_duration_ms = monotonic_elapsed_ms(risk_started)
     except SystemError:
-        return InstanceCycleResult(
+        analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
+        return _cycle_result(
             instance=instance,
             timestamp_utc=resolved_timestamp,
             completed=False,
@@ -455,7 +497,7 @@ def run_instance_cycle(
         timestamp_utc=resolved_timestamp,
     )
 
-    return InstanceCycleResult(
+    return _cycle_result(
         instance=instance,
         timestamp_utc=resolved_timestamp,
         completed=True,

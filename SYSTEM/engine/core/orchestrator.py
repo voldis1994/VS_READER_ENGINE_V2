@@ -15,6 +15,7 @@ from engine.core.lifecycle import (
 )
 from engine.core.logging_setup import log_event
 from engine.core.monitoring import MonitoringState, log_runtime_monitoring_summary, observe_instance_cycle
+from engine.core.performance import PerformanceState, flush_runtime_performance, observe_instance_performance
 from engine.journal.error_journal import log_error
 from engine.protocol.constants import ErrorType
 from engine.state.instance_state import InstanceState
@@ -146,6 +147,7 @@ def run_runtime_cycles(
     results: list[InstanceCycleResult] = []
     shared_cache: dict[str, Any] = {} if cache is None else cache
     monitoring_state = MonitoringState()
+    performance_state = PerformanceState()
 
     from engine.core.recovery import run_runtime_recovery
 
@@ -174,6 +176,13 @@ def run_runtime_cycles(
             state=monitoring_state,
             measured_ack_latency_ms=result.ack_latency_ms,
         )
+        if result.performance_timings is not None:
+            _, performance_state = observe_instance_performance(
+                runtime,
+                instance,
+                result.performance_timings,
+                state=performance_state,
+            )
         results.append(result)
 
     completed_count = sum(1 for result in results if result.completed)
@@ -194,6 +203,7 @@ def run_runtime_cycles(
         failed_count=failed_count,
         total_errors=sum(monitoring_state.error_counts.values()),
     )
+    flush_runtime_performance(runtime, performance_state, force=True)
     return OrchestratorCycleResult(
         instance_results=tuple(results),
         completed_count=completed_count,
