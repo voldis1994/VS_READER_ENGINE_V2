@@ -4,6 +4,7 @@ from engine.decision.buy import (
     calculate_buy_candidate,
     calculate_buy_score,
 )
+from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.decision.filters import (
     NewsFilterResult,
     SpreadFilterResult,
@@ -32,6 +33,7 @@ from engine.decision.wait_block import (
 __all__ = [
     "BlockDecisionResult",
     "BuyCandidate",
+    "DecisionResult",
     "NewsFilterResult",
     "ScoringResult",
     "SellCandidate",
@@ -54,4 +56,5 @@ __all__ = [
     "evaluate_volatility_filter",
     "evaluate_wait_decision",
     "resolve_preferred_side",
+    "run_decision_engine",
 ]
