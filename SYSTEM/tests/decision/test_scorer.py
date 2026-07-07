@@ -18,6 +18,7 @@ def _context() -> AnalysisContext:
         news_active=False,
         context_quality=0.9,
         trade_environment="FAVORABLE",
+        spread_filter_passed=True,
     )
 
 

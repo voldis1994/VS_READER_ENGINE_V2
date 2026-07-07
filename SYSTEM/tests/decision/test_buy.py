@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 from datetime import datetime, timezone
 
-from engine.analysis.engine import run_analysis_engine
+from engine.analysis.context import with_spread_filter_passed
+from engine.analysis.engine import run_analysis_engine, with_analysis_context
 from engine.core.instance import Instance
 from engine.decision.buy import (
     BuyCandidate,
@@ -79,6 +80,13 @@ def _passing_filters() -> tuple:
     )
 
 
+def _analysis_with_spread_filter(analysis, spread_filter):  # type: ignore[no-untyped-def]
+    return with_analysis_context(
+        analysis,
+        with_spread_filter_passed(analysis.context, spread_filter.spread_acceptable),
+    )
+
+
 def test_build_buy_component_scores_contains_all_components() -> None:
     analysis = run_analysis_engine(_universe(), _bullish_bars())
     scores = build_buy_component_scores(analysis)
@@ -119,7 +127,7 @@ def test_valid_buy_candidate_contains_all_fields() -> None:
     spread_filter, volatility_filter, news_filter = _passing_filters()
 
     candidate = calculate_buy_candidate(
-        analysis=analysis,
+        analysis=_analysis_with_spread_filter(analysis, spread_filter),
         market_bars=bars,
         spread_filter=spread_filter,
         volatility_filter=volatility_filter,
@@ -146,7 +154,7 @@ def test_invalid_buy_candidate_requires_invalid_reason() -> None:
     spread_filter = evaluate_spread_filter(relative_spread=2.0, threshold=1.5)
 
     candidate = calculate_buy_candidate(
-        analysis=analysis,
+        analysis=_analysis_with_spread_filter(analysis, spread_filter),
         market_bars=bars,
         spread_filter=spread_filter,
         volatility_filter=volatility_filter,

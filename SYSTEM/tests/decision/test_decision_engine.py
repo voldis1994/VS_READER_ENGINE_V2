@@ -227,6 +227,72 @@ def test_decision_engine_uses_config_spread_threshold() -> None:
     assert allowed.buy_candidate.valid
 
 
+def test_decision_engine_sets_spread_filter_passed_true_when_spread_accepted() -> None:
+    result = run_decision_engine(**_engine_kwargs(market_bars=_bullish_bars(), relative_spread=1.0))
+
+    assert result.analysis_context.spread_filter_passed is True
+    assert result.analysis_context.to_dict()["spread_filter_passed"] is True
+
+
+def test_decision_engine_sets_spread_filter_passed_false_when_spread_rejected() -> None:
+    result = run_decision_engine(
+        **_engine_kwargs(
+            market_bars=_bullish_bars(),
+            relative_spread=2.0,
+            spread_threshold=1.5,
+        ),
+    )
+
+    assert result.analysis_context.spread_filter_passed is False
+    assert result.analysis_context.to_dict()["spread_filter_passed"] is False
+
+
+def test_spread_filter_passed_propagates_through_all_decision_paths() -> None:
+    accepted = run_decision_engine(**_engine_kwargs(market_bars=_bullish_bars(), relative_spread=1.0))
+    buy_path = run_decision_engine(
+        **_engine_kwargs(market_bars=_sell_invalid_buy_valid_bars(), stop_loss_buffer=0.0),
+    )
+    sell_path = run_decision_engine(
+        **_engine_kwargs(market_bars=_buy_invalid_sell_valid_bars(), stop_loss_buffer=0.0),
+    )
+    wait_path = run_decision_engine(
+        **_engine_kwargs(
+            market_bars=_bullish_bars(),
+            weights={
+                "momentum": 0.0,
+                "trend": 0.0,
+                "structure": 0.0,
+                "pressure": 0.0,
+                "behavior": 0.0,
+                "impact": 0.0,
+                "context": 1.0,
+            },
+        ),
+    )
+    block_path = run_decision_engine(
+        **_engine_kwargs(market_bars=_bullish_bars()),
+        block_reason=build_reason(REASON_SPREAD_ABNORMAL, "relative spread above threshold"),
+    )
+    rejected = run_decision_engine(
+        **_engine_kwargs(
+            market_bars=_bullish_bars(),
+            relative_spread=2.0,
+            spread_threshold=1.5,
+        ),
+    )
+
+    assert accepted.decision in {Decision.BUY.value, Decision.SELL.value, Decision.WAIT.value}
+    assert buy_path.decision == Decision.BUY.value
+    assert sell_path.decision == Decision.SELL.value
+    assert wait_path.decision == Decision.WAIT.value
+    assert block_path.decision == Decision.BLOCK.value
+
+    for result in (accepted, buy_path, sell_path, wait_path, block_path):
+        assert result.analysis_context.spread_filter_passed is True
+
+    assert rejected.analysis_context.spread_filter_passed is False
+
+
 def test_decision_engine_logs_error_and_does_not_swallow_exception(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

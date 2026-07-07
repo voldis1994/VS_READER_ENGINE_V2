@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import uuid4
 
-from engine.analysis.engine import run_analysis_engine
+from engine.analysis.engine import run_analysis_engine, with_analysis_context
+from engine.analysis.context import with_spread_filter_passed
 from engine.core.paths import SystemPaths
 from engine.decision.buy import BuyCandidate, calculate_buy_candidate
 from engine.decision.filters.news_filter import evaluate_news_filter
@@ -16,6 +17,7 @@ from engine.decision.scorer import ScoringResult, compare_candidates
 from engine.decision.sell import SellCandidate, calculate_sell_candidate
 from engine.decision.wait_block import evaluate_block_decision, evaluate_wait_decision
 from engine.journal.error_journal import log_error
+from engine.analysis.context import AnalysisContext
 from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.protocol.constants import Decision, ErrorType, Side
 from engine.protocol.models import UniverseRecord, SystemConfig
@@ -34,6 +36,7 @@ class DecisionResult:
     sell_candidate: SellCandidate
     buy_score: float
     sell_score: float
+    analysis_context: AnalysisContext
 
 
 def _build_direction_reason(side: str, scoring: ScoringResult) -> str:
@@ -97,6 +100,10 @@ def run_decision_engine(
             relative_spread,
             analysis_config.spread_relative_threshold,
         )
+        analysis = with_analysis_context(
+            analysis,
+            with_spread_filter_passed(analysis.context, spread_filter.spread_acceptable),
+        )
         volatility_filter = evaluate_volatility_filter(
             relative_volatility,
             analysis_config.volatility_relative_threshold,
@@ -149,6 +156,7 @@ def run_decision_engine(
             sell_candidate=sell_candidate,
             buy_score=scoring.buy_score,
             sell_score=scoring.sell_score,
+            analysis_context=analysis.context,
         )
     except Exception as exc:
         if paths is not None:

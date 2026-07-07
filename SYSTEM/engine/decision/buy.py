@@ -111,7 +111,7 @@ def calculate_buy_candidate(
     component_scores = build_buy_component_scores(analysis)
     buy_score = calculate_buy_score(component_scores, weights)
 
-    if not spread_filter.spread_acceptable:
+    if not analysis.context.spread_filter_passed:
         return _invalid_candidate(
             invalid_reason=spread_filter.reason or build_reason(
                 REASON_DATA_INVALID,

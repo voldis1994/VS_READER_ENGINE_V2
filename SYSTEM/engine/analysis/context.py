@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.protocol.constants import MarketRegime, TradeEnvironment
@@ -14,6 +15,39 @@ class AnalysisContext:
     news_active: bool
     context_quality: float
     trade_environment: str
+    spread_filter_passed: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "session": self.session,
+            "regime": self.regime,
+            "news_active": self.news_active,
+            "context_quality": self.context_quality,
+            "trade_environment": self.trade_environment,
+            "spread_filter_passed": self.spread_filter_passed,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> AnalysisContext:
+        return cls(
+            session=str(payload["session"]),
+            regime=str(payload["regime"]),
+            news_active=bool(payload["news_active"]),
+            context_quality=float(payload["context_quality"]),
+            trade_environment=str(payload["trade_environment"]),
+            spread_filter_passed=bool(payload.get("spread_filter_passed", True)),
+        )
+
+
+def with_spread_filter_passed(context: AnalysisContext, spread_filter_passed: bool) -> AnalysisContext:
+    return AnalysisContext(
+        session=context.session,
+        regime=context.regime,
+        news_active=context.news_active,
+        context_quality=context.context_quality,
+        trade_environment=context.trade_environment,
+        spread_filter_passed=spread_filter_passed,
+    )
 
 
 def _resolve_trade_environment(regime: str, news_active: bool) -> str:
@@ -52,4 +86,5 @@ def build_analysis_context(
         news_active=universe.news_window_active,
         context_quality=quality,
         trade_environment=environment,
+        spread_filter_passed=True,
     )

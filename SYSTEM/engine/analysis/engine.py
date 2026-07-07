@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from engine.analysis.behavior import BehaviorAnalysis, analyze_behavior
-from engine.analysis.context import AnalysisContext, build_analysis_context
+from engine.analysis.context import AnalysisContext, build_analysis_context, with_spread_filter_passed
 from engine.analysis.impact import ImpactAnalysis, analyze_impact
 from engine.analysis.momentum import MomentumAnalysis, analyze_momentum_and_trend
 from engine.analysis.pressure import PressureAnalysis, analyze_pressure
@@ -63,4 +63,19 @@ def run_analysis_engine(
         pressure=pressure,
         behavior=behavior,
         impact=impact,
+    )
+
+
+def with_analysis_context(
+    analysis: AnalysisEngineResult,
+    context: AnalysisContext,
+) -> AnalysisEngineResult:
+    return AnalysisEngineResult(
+        context=context,
+        structure=analysis.structure,
+        momentum=analysis.momentum,
+        trend=analysis.trend,
+        pressure=analysis.pressure,
+        behavior=analysis.behavior,
+        impact=analysis.impact,
     )

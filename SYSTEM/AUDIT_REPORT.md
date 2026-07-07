@@ -11,7 +11,7 @@
 
 Audits **nav pilnībā iziets**. P31–P45 funkcionalitāte un testi (330) ir stabili, un BUY/SELL/WAIT/EDGE arhitektūras virziens atbilst SYSTEM kā edge discovery platformai. Tomēr konstatētas specifikācijas līguma un uzturēšanas drift problēmas, kas nākamajos posmos (P46–P48, `run_live`) prasīs koncentrētus labojumus.
 
-**Kritiskākie punkti:** trūkstošs `spread_filter_passed` kontekstā (A1), `buy.py`/`sell.py` masīva dublēšanās (A3). **A2 (konfigurācijas centralizācija) — labots.**
+**Kritiskākie punkti:** `buy.py`/`sell.py` masīva dublēšanās (A3). **A1 (spread_filter_passed) — labots.** **A2 (konfigurācijas centralizācija) — labots.**
 
 ---
 
@@ -65,20 +65,30 @@ normalizer/protocol/state
 
 ---
 
-## A1. `AnalysisContext` trūkst `spread_filter_passed` (spec §58.3)
+## A1. `AnalysisContext` trūkst `spread_filter_passed` (spec §58.3) — **LABOTS**
 
 **Smagums:** Vidējs–augsts  
-**Spec:** `SYSTEM_SPECIFICATION.md` §58.3 — “Ja spread nav pieņemams, analīzes kontekstā tiek atzīmēts `spread_filter_passed: false`.”
+**Spec:** `SYSTEM_SPECIFICATION.md` §58.3 — “Ja spread nav pieņemams, analīzes kontekstā tiek atzīmēts `spread_filter_passed: false`.”  
+**Statuss:** **A1 fixed** (2026-07-07)
 
-### Pierādījumi
+### Bija
 
-- `engine/analysis/context.py` — `AnalysisContext` satur tikai `session`, `regime`, `news_active`, `context_quality`, `trade_environment`.
-- Spread filtrs (P37) darbojas atsevišķi `decision/filters/spread_filter.py`, bet konteksta objektā netiek atspoguļots.
+- `engine/analysis/context.py` — `AnalysisContext` nesaturēja `spread_filter_passed`.
+- Spread filtrs (P37) darbojās atsevišķi `decision/filters/spread_filter.py`, bet konteksta objektā netika atspoguļots.
+- `buy.py`/`sell.py` lasīja `spread_filter.spread_acceptable` tieši, nevis kontekstu.
 
-### Sekas
+### Labojums
 
-- Specifikācijas līgums starp analīzi un lēmumu posmu nav pilnīgs.
-- Dashboard/žurnāli nākotnē nevarēs vienoti nolasīt spread filtra stāvokli no konteksta.
+- `AnalysisContext` paplašināts ar `spread_filter_passed: bool` un `to_dict()` / `from_dict()` serializāciju.
+- `with_spread_filter_passed()` un `with_analysis_context()` atjaunina kontekstu uzreiz pēc spread filtra novērtēšanas `run_decision_engine()` plūsmā.
+- `buy.py`/`sell.py` izmanto `analysis.context.spread_filter_passed` kā vienīgo avotu spread pass/fail stāvoklim.
+- `DecisionResult` ietver `analysis_context`, lai lauks būtu pieejams visos lēmumu ceļos (BUY, SELL, WAIT, BLOCK).
+- Testi: spread accepted/rejected, pilna decision pipeline propagācija.
+
+### Sekas (pēc labojuma)
+
+- Specifikācijas līgums starp analīzi un lēmumu posmu ir pilnīgāks.
+- Dashboard/žurnāli var nolasīt spread filtra stāvokli no `AnalysisContext`.
 
 ---
 
@@ -223,20 +233,20 @@ normalizer/protocol/state
 ## Testu stāvoklis
 
 ```
-335 passed (P01–P45, A2)
+340 passed (P01–P45, A1–A2)
 ```
 
-Testi apstiprina fāžu funkcionalitāti un A2 config centralizāciju; A1 un A3–A8 specifikācijas driftu vēl sedz daļēji.
+Testi apstiprina fāžu funkcionalitāti, A1 spread konteksta lauku un A2 config centralizāciju; A3–A8 specifikācijas driftu vēl sedz daļēji.
 
 ---
 
 ## Kopējais secinājums
 
-P31–P45 audits **nav pilnībā iziets** konstatēto problēmu dēļ (īpaši **A1**, **A3**). **A2 ir labots.**
+P31–P45 audits **nav pilnībā iziets** konstatēto problēmu dēļ (īpaši **A3**). **A1 un A2 ir laboti.**
 
 Arhitektūras virziens — simetriska BUY/SELL edge discovery ar atsevišķu riska BLOCK slāni — ir **saglabāts** un atbilst SYSTEM filozofijai. Problēmas ir galvenokārt **līguma pilnīguma** un **integrācijas gatavības**, nevis fundamentālas lēmumu arhitektūras kļūdas.
 
 **Ieteicamā secība labojumiem (ārpus šī audita):**
-1. ~~Paplašināt `AnalysisConfig` / `RiskConfig` ar spec parametriem (A2).~~ **Done.**
-2. Pievienot `spread_filter_passed` kontekstam vai dokumentēt alternatīvu plūsmu (A1).
+1. ~~Pievienot `spread_filter_passed` kontekstam (A1).~~ **Done.**
+2. ~~Paplašināt `AnalysisConfig` / `RiskConfig` ar spec parametriem (A2).~~ **Done.**
 3. Pārdomāt `buy`/`sell` kopīgo kodu pirms P48, lai samazinātu dublēšanu (A3).

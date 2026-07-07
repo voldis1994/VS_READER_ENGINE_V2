@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from engine.analysis.engine import run_analysis_engine
+from engine.analysis.context import with_spread_filter_passed
+from engine.analysis.engine import run_analysis_engine, with_analysis_context
 from engine.core.instance import Instance
 from engine.decision.buy import calculate_buy_candidate
 from engine.decision.filters.news_filter import evaluate_news_filter
@@ -87,6 +88,13 @@ def _passing_filters() -> tuple:
     )
 
 
+def _analysis_with_spread_filter(analysis, spread_filter):  # type: ignore[no-untyped-def]
+    return with_analysis_context(
+        analysis,
+        with_spread_filter_passed(analysis.context, spread_filter.spread_acceptable),
+    )
+
+
 def test_build_sell_component_scores_contains_all_components() -> None:
     analysis = run_analysis_engine(_universe(), _bearish_bars())
     scores = build_sell_component_scores(analysis)
@@ -127,7 +135,7 @@ def test_valid_sell_candidate_contains_all_fields() -> None:
     spread_filter, volatility_filter, news_filter = _passing_filters()
 
     candidate = calculate_sell_candidate(
-        analysis=analysis,
+        analysis=_analysis_with_spread_filter(analysis, spread_filter),
         market_bars=bars,
         spread_filter=spread_filter,
         volatility_filter=volatility_filter,
@@ -154,7 +162,7 @@ def test_invalid_sell_candidate_requires_invalid_reason() -> None:
     spread_filter = evaluate_spread_filter(relative_spread=2.0, threshold=1.5)
 
     candidate = calculate_sell_candidate(
-        analysis=analysis,
+        analysis=_analysis_with_spread_filter(analysis, spread_filter),
         market_bars=bars,
         spread_filter=spread_filter,
         volatility_filter=volatility_filter,
@@ -176,7 +184,7 @@ def test_sell_is_calculated_even_when_buy_is_valid() -> None:
     analysis = run_analysis_engine(_universe(), bars)
     spread_filter, volatility_filter, news_filter = _passing_filters()
     kwargs = {
-        "analysis": analysis,
+        "analysis": _analysis_with_spread_filter(analysis, spread_filter),
         "market_bars": bars,
         "spread_filter": spread_filter,
         "volatility_filter": volatility_filter,
