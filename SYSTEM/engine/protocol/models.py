@@ -1,0 +1,1100 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from typing import Any
+
+from engine.protocol.constants import (
+    ErrorType,
+    LogLevel,
+    MarketRegime,
+    NewsImpactLevel,
+    Side,
+    SYSTEM_NAME,
+    TIMEFRAME_M1,
+    TradeEvent,
+    is_supported_config_schema_version,
+    is_supported_protocol_schema_version,
+    is_supported_state_schema_version,
+    is_universe_forbidden_field,
+    is_valid_ack_status,
+    is_valid_decision,
+    is_valid_order_action,
+    is_valid_risk_result,
+)
+from engine.protocol.errors import ValidationError
+
+
+def _require_non_empty_string(value: str, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValidationError(
+            f"{field_name} must be a string",
+            module="protocol.models",
+            context={"field": field_name, "value_type": type(value).__name__},
+        )
+    stripped = value.strip()
+    if not stripped:
+        raise ValidationError(
+            f"{field_name} must not be empty",
+            module="protocol.models",
+            context={"field": field_name},
+        )
+    return stripped
+
+
+def _require_int(value: int, field_name: str, *, minimum: int | None = None) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(
+            f"{field_name} must be an integer",
+            module="protocol.models",
+            context={"field": field_name, "value_type": type(value).__name__},
+        )
+    if minimum is not None and value < minimum:
+        raise ValidationError(
+            f"{field_name} must be >= {minimum}",
+            module="protocol.models",
+            context={"field": field_name, "value": value, "minimum": minimum},
+        )
+    return value
+
+
+def _require_number(value: float, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValidationError(
+            f"{field_name} must be a number",
+            module="protocol.models",
+            context={"field": field_name, "value_type": type(value).__name__},
+        )
+    return float(value)
+
+
+def _require_bool(value: bool, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValidationError(
+            f"{field_name} must be a boolean",
+            module="protocol.models",
+            context={"field": field_name, "value_type": type(value).__name__},
+        )
+    return value
+
+
+def _validate_magic(magic: int) -> int:
+    return _require_int(magic, "magic", minimum=0)
+
+
+def _validate_account_id(account_id: str) -> str:
+    return _require_non_empty_string(account_id, "account_id")
+
+
+def _validate_symbol(symbol: str) -> str:
+    return _require_non_empty_string(symbol, "symbol")
+
+
+@dataclass(frozen=True)
+class InstanceKey:
+    account_id: str
+    symbol: str
+    magic: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+
+    def as_tuple(self) -> tuple[str, str, int]:
+        return (self.account_id, self.symbol, self.magic)
+
+    def matches(self, account_id: str, symbol: str, magic: int) -> bool:
+        return (
+            self.account_id == account_id
+            and self.symbol == symbol
+            and self.magic == magic
+        )
+
+    def to_dict(self) -> dict[str, str | int]:
+        return {
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> InstanceKey:
+        return cls(
+            account_id=str(data["account_id"]),
+            symbol=str(data["symbol"]),
+            magic=int(data["magic"]),
+        )
+
+
+@dataclass(frozen=True)
+class SystemSection:
+    name: str
+    root_path: str
+    timeframe: str
+
+    def __post_init__(self) -> None:
+        name = _require_non_empty_string(self.name, "system.name")
+        root_path = _require_non_empty_string(self.root_path, "system.root_path")
+        timeframe = _require_non_empty_string(self.timeframe, "system.timeframe")
+        if name != SYSTEM_NAME:
+            raise ValidationError(
+                f"system.name must be {SYSTEM_NAME}",
+                module="protocol.models",
+                context={"value": name},
+            )
+        if timeframe != TIMEFRAME_M1:
+            raise ValidationError(
+                f"system.timeframe must be {TIMEFRAME_M1}",
+                module="protocol.models",
+                context={"value": timeframe},
+            )
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "root_path", root_path)
+        object.__setattr__(self, "timeframe", timeframe)
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "name": self.name,
+            "root_path": self.root_path,
+            "timeframe": self.timeframe,
+        }
+
+
+@dataclass(frozen=True)
+class PathsConfig:
+    clients: str
+    logs: str
+    cache: str
+    history: str
+    universe: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "clients", _require_non_empty_string(self.clients, "paths.clients"))
+        object.__setattr__(self, "logs", _require_non_empty_string(self.logs, "paths.logs"))
+        object.__setattr__(self, "cache", _require_non_empty_string(self.cache, "paths.cache"))
+        object.__setattr__(self, "history", _require_non_empty_string(self.history, "paths.history"))
+        object.__setattr__(self, "universe", _require_non_empty_string(self.universe, "paths.universe"))
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "clients": self.clients,
+            "logs": self.logs,
+            "cache": self.cache,
+            "history": self.history,
+            "universe": self.universe,
+        }
+
+
+@dataclass(frozen=True)
+class RuntimeConfig:
+    cycle_interval_ms: int
+    ack_timeout_ms: int
+    retry_max: int
+    auto_discover_instances: bool
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "cycle_interval_ms",
+            _require_int(self.cycle_interval_ms, "runtime.cycle_interval_ms", minimum=1),
+        )
+        object.__setattr__(
+            self,
+            "ack_timeout_ms",
+            _require_int(self.ack_timeout_ms, "runtime.ack_timeout_ms", minimum=1),
+        )
+        object.__setattr__(
+            self,
+            "retry_max",
+            _require_int(self.retry_max, "runtime.retry_max", minimum=0),
+        )
+        object.__setattr__(
+            self,
+            "auto_discover_instances",
+            _require_bool(self.auto_discover_instances, "runtime.auto_discover_instances"),
+        )
+
+    def to_dict(self) -> dict[str, int | bool]:
+        return {
+            "cycle_interval_ms": self.cycle_interval_ms,
+            "ack_timeout_ms": self.ack_timeout_ms,
+            "retry_max": self.retry_max,
+            "auto_discover_instances": self.auto_discover_instances,
+        }
+
+
+@dataclass(frozen=True)
+class InstanceDefinition:
+    account_id: str
+    symbol: str
+    magic: int
+    enabled: bool
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        object.__setattr__(self, "enabled", _require_bool(self.enabled, "instances[].enabled"))
+
+    @property
+    def key(self) -> InstanceKey:
+        return InstanceKey(self.account_id, self.symbol, self.magic)
+
+    def to_dict(self) -> dict[str, str | int | bool]:
+        return {
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "enabled": self.enabled,
+        }
+
+
+@dataclass(frozen=True)
+class RiskConfig:
+    max_open_positions_per_instance: int
+    max_daily_loss_percent: float
+    max_drawdown_percent: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "max_open_positions_per_instance",
+            _require_int(
+                self.max_open_positions_per_instance,
+                "risk.max_open_positions_per_instance",
+                minimum=0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "max_daily_loss_percent",
+            _require_number(self.max_daily_loss_percent, "risk.max_daily_loss_percent"),
+        )
+        object.__setattr__(
+            self,
+            "max_drawdown_percent",
+            _require_number(self.max_drawdown_percent, "risk.max_drawdown_percent"),
+        )
+
+    def to_dict(self) -> dict[str, int | float]:
+        return {
+            "max_open_positions_per_instance": self.max_open_positions_per_instance,
+            "max_daily_loss_percent": self.max_daily_loss_percent,
+            "max_drawdown_percent": self.max_drawdown_percent,
+        }
+
+
+@dataclass(frozen=True)
+class AnalysisConfig:
+    lookback_bars: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "lookback_bars",
+            _require_int(self.lookback_bars, "analysis.lookback_bars", minimum=1),
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {"lookback_bars": self.lookback_bars}
+
+
+@dataclass(frozen=True)
+class JournalConfig:
+    retention_days: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "retention_days",
+            _require_int(self.retention_days, "journal.retention_days", minimum=1),
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {"retention_days": self.retention_days}
+
+
+@dataclass(frozen=True)
+class DashboardConfig:
+    refresh_interval_ms: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "refresh_interval_ms",
+            _require_int(self.refresh_interval_ms, "dashboard.refresh_interval_ms", minimum=1),
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {"refresh_interval_ms": self.refresh_interval_ms}
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    level: str
+    format: str
+
+    def __post_init__(self) -> None:
+        level = _require_non_empty_string(self.level, "logging.level")
+        log_format = _require_non_empty_string(self.format, "logging.format")
+        if level not in LogLevel._value2member_map_:
+            raise ValidationError(
+                "logging.level is invalid",
+                module="protocol.models",
+                context={"value": level},
+            )
+        object.__setattr__(self, "level", level)
+        object.__setattr__(self, "format", log_format)
+
+    def to_dict(self) -> dict[str, str]:
+        return {"level": self.level, "format": self.format}
+
+
+@dataclass(frozen=True)
+class SystemConfig:
+    schema_version: str
+    system: SystemSection
+    paths: PathsConfig
+    runtime: RuntimeConfig
+    instances: tuple[InstanceDefinition, ...]
+    risk: RiskConfig
+    analysis: AnalysisConfig
+    journal: JournalConfig
+    dashboard: DashboardConfig
+    logging: LoggingConfig
+
+    def __post_init__(self) -> None:
+        schema_version = _require_non_empty_string(self.schema_version, "schema_version")
+        if not is_supported_config_schema_version(schema_version):
+            raise ValidationError(
+                "unsupported config schema_version",
+                module="protocol.models",
+                context={"schema_version": schema_version},
+            )
+        if not isinstance(self.instances, tuple):
+            raise ValidationError(
+                "instances must be a tuple",
+                module="protocol.models",
+                context={"value_type": type(self.instances).__name__},
+            )
+        keys = [instance.key.as_tuple() for instance in self.instances]
+        if len(keys) != len(set(keys)):
+            raise ValidationError(
+                "duplicate instance definitions are not allowed",
+                module="protocol.models",
+                context={"instances": list(keys)},
+            )
+        object.__setattr__(self, "schema_version", schema_version)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "system": self.system.to_dict(),
+            "paths": self.paths.to_dict(),
+            "runtime": self.runtime.to_dict(),
+            "instances": [instance.to_dict() for instance in self.instances],
+            "risk": self.risk.to_dict(),
+            "analysis": self.analysis.to_dict(),
+            "journal": self.journal.to_dict(),
+            "dashboard": self.dashboard.to_dict(),
+            "logging": self.logging.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class StatusRecord:
+    schema_version: str
+    timestamp_utc: str
+    account_id: str
+    connected: bool
+    trade_allowed: bool
+    balance: float
+    equity: float
+    margin_free: float
+    ea_version: str
+    last_error: str | None = None
+
+    def __post_init__(self) -> None:
+        schema_version = _require_non_empty_string(self.schema_version, "schema_version")
+        if not is_supported_protocol_schema_version(schema_version):
+            raise ValidationError(
+                "unsupported protocol schema_version",
+                module="protocol.models",
+                context={"schema_version": schema_version},
+            )
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "timestamp_utc", _require_non_empty_string(self.timestamp_utc, "timestamp_utc"))
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "connected", _require_bool(self.connected, "connected"))
+        object.__setattr__(self, "trade_allowed", _require_bool(self.trade_allowed, "trade_allowed"))
+        object.__setattr__(self, "balance", _require_number(self.balance, "balance"))
+        object.__setattr__(self, "equity", _require_number(self.equity, "equity"))
+        object.__setattr__(self, "margin_free", _require_number(self.margin_free, "margin_free"))
+        object.__setattr__(self, "ea_version", _require_non_empty_string(self.ea_version, "ea_version"))
+        if self.last_error is not None:
+            object.__setattr__(self, "last_error", _require_non_empty_string(self.last_error, "last_error"))
+
+    def to_dict(self) -> dict[str, Any]:
+        data = {
+            "schema_version": self.schema_version,
+            "timestamp_utc": self.timestamp_utc,
+            "account_id": self.account_id,
+            "connected": self.connected,
+            "trade_allowed": self.trade_allowed,
+            "balance": self.balance,
+            "equity": self.equity,
+            "margin_free": self.margin_free,
+            "ea_version": self.ea_version,
+        }
+        if self.last_error is not None:
+            data["last_error"] = self.last_error
+        return data
+
+
+@dataclass(frozen=True)
+class UniverseRecord:
+    schema_version: str
+    timestamp_utc: str
+    session: str
+    market_regime: str
+    news_window_active: bool
+    news_impact_level: str | None = None
+    correlation_group: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        schema_version = _require_non_empty_string(self.schema_version, "schema_version")
+        if not is_supported_protocol_schema_version(schema_version):
+            raise ValidationError(
+                "unsupported protocol schema_version",
+                module="protocol.models",
+                context={"schema_version": schema_version},
+            )
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "timestamp_utc", _require_non_empty_string(self.timestamp_utc, "timestamp_utc"))
+        object.__setattr__(self, "session", _require_non_empty_string(self.session, "session"))
+        market_regime = _require_non_empty_string(self.market_regime, "market_regime")
+        if market_regime not in MarketRegime._value2member_map_:
+            raise ValidationError(
+                "market_regime is invalid",
+                module="protocol.models",
+                context={"value": market_regime},
+            )
+        object.__setattr__(self, "market_regime", market_regime)
+        object.__setattr__(
+            self,
+            "news_window_active",
+            _require_bool(self.news_window_active, "news_window_active"),
+        )
+        if self.news_impact_level is not None:
+            impact = _require_non_empty_string(self.news_impact_level, "news_impact_level")
+            if impact not in NewsImpactLevel._value2member_map_:
+                raise ValidationError(
+                    "news_impact_level is invalid",
+                    module="protocol.models",
+                    context={"value": impact},
+                )
+            object.__setattr__(self, "news_impact_level", impact)
+        if self.correlation_group is not None and not isinstance(self.correlation_group, dict):
+            raise ValidationError(
+                "correlation_group must be a dict",
+                module="protocol.models",
+            )
+        if self.metadata is not None:
+            if not isinstance(self.metadata, dict):
+                raise ValidationError(
+                    "metadata must be a dict",
+                    module="protocol.models",
+                )
+            for key in self.metadata:
+                if is_universe_forbidden_field(key):
+                    raise ValidationError(
+                        f"universe metadata contains forbidden field: {key}",
+                        module="protocol.models",
+                        context={"field": key},
+                    )
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "timestamp_utc": self.timestamp_utc,
+            "session": self.session,
+            "market_regime": self.market_regime,
+            "news_window_active": self.news_window_active,
+        }
+        if self.news_impact_level is not None:
+            data["news_impact_level"] = self.news_impact_level
+        if self.correlation_group is not None:
+            data["correlation_group"] = self.correlation_group
+        if self.metadata is not None:
+            data["metadata"] = self.metadata
+        return data
+
+
+@dataclass(frozen=True)
+class ControlCommand:
+    schema_version: str
+    timestamp_utc: str
+    command_id: str
+    account_id: str
+    symbol: str
+    magic: int
+    action: str
+    reason: str
+    decision_id: str
+    side: str | None = None
+    volume: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    ticket: int | None = None
+
+    def __post_init__(self) -> None:
+        schema_version = _require_non_empty_string(self.schema_version, "schema_version")
+        if not is_supported_protocol_schema_version(schema_version):
+            raise ValidationError(
+                "unsupported protocol schema_version",
+                module="protocol.models",
+                context={"schema_version": schema_version},
+            )
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "timestamp_utc", _require_non_empty_string(self.timestamp_utc, "timestamp_utc"))
+        object.__setattr__(self, "command_id", _require_non_empty_string(self.command_id, "command_id"))
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        action = _require_non_empty_string(self.action, "action")
+        if not is_valid_order_action(action):
+            raise ValidationError(
+                "action is invalid",
+                module="protocol.models",
+                context={"value": action},
+            )
+        object.__setattr__(self, "action", action)
+        object.__setattr__(self, "reason", _require_non_empty_string(self.reason, "reason"))
+        object.__setattr__(self, "decision_id", _require_non_empty_string(self.decision_id, "decision_id"))
+        if self.side is not None:
+            side = _require_non_empty_string(self.side, "side")
+            if side not in {Side.BUY.value, Side.SELL.value}:
+                raise ValidationError(
+                    "side is invalid",
+                    module="protocol.models",
+                    context={"value": side},
+                )
+            object.__setattr__(self, "side", side)
+        if self.volume is not None:
+            object.__setattr__(self, "volume", _require_number(self.volume, "volume"))
+        if self.stop_loss is not None:
+            object.__setattr__(self, "stop_loss", _require_number(self.stop_loss, "stop_loss"))
+        if self.take_profit is not None:
+            object.__setattr__(self, "take_profit", _require_number(self.take_profit, "take_profit"))
+        if self.ticket is not None:
+            object.__setattr__(self, "ticket", _require_int(self.ticket, "ticket", minimum=0))
+
+    @property
+    def instance_key(self) -> InstanceKey:
+        return InstanceKey(self.account_id, self.symbol, self.magic)
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "timestamp_utc": self.timestamp_utc,
+            "command_id": self.command_id,
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "action": self.action,
+            "reason": self.reason,
+            "decision_id": self.decision_id,
+        }
+        if self.side is not None:
+            data["side"] = self.side
+        if self.volume is not None:
+            data["volume"] = self.volume
+        if self.stop_loss is not None:
+            data["stop_loss"] = self.stop_loss
+        if self.take_profit is not None:
+            data["take_profit"] = self.take_profit
+        if self.ticket is not None:
+            data["ticket"] = self.ticket
+        return data
+
+
+@dataclass(frozen=True)
+class AckRecord:
+    schema_version: str
+    timestamp_utc: str
+    command_id: str
+    account_id: str
+    symbol: str
+    magic: int
+    status: str
+    ticket: int | None = None
+    error_code: int | None = None
+    error_message: str | None = None
+
+    def __post_init__(self) -> None:
+        schema_version = _require_non_empty_string(self.schema_version, "schema_version")
+        if not is_supported_protocol_schema_version(schema_version):
+            raise ValidationError(
+                "unsupported protocol schema_version",
+                module="protocol.models",
+                context={"schema_version": schema_version},
+            )
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "timestamp_utc", _require_non_empty_string(self.timestamp_utc, "timestamp_utc"))
+        object.__setattr__(self, "command_id", _require_non_empty_string(self.command_id, "command_id"))
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        status = _require_non_empty_string(self.status, "status")
+        if not is_valid_ack_status(status):
+            raise ValidationError(
+                "status is invalid",
+                module="protocol.models",
+                context={"value": status},
+            )
+        object.__setattr__(self, "status", status)
+        if self.ticket is not None:
+            object.__setattr__(self, "ticket", _require_int(self.ticket, "ticket", minimum=0))
+        if self.error_code is not None:
+            object.__setattr__(self, "error_code", _require_int(self.error_code, "error_code"))
+        if self.error_message is not None:
+            object.__setattr__(
+                self,
+                "error_message",
+                _require_non_empty_string(self.error_message, "error_message"),
+            )
+
+    @property
+    def instance_key(self) -> InstanceKey:
+        return InstanceKey(self.account_id, self.symbol, self.magic)
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "timestamp_utc": self.timestamp_utc,
+            "command_id": self.command_id,
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "status": self.status,
+        }
+        if self.ticket is not None:
+            data["ticket"] = self.ticket
+        if self.error_code is not None:
+            data["error_code"] = self.error_code
+        if self.error_message is not None:
+            data["error_message"] = self.error_message
+        return data
+
+
+@dataclass(frozen=True)
+class InstanceStateRecord:
+    schema_version: str
+    account_id: str
+    symbol: str
+    magic: int
+    last_decision: str
+    last_reason: str
+    last_cycle_utc: str
+    open_ticket: int | None = None
+    position_side: str | None = None
+    position_volume: float | None = None
+
+    def __post_init__(self) -> None:
+        schema_version = _require_non_empty_string(self.schema_version, "schema_version")
+        if not is_supported_state_schema_version(schema_version):
+            raise ValidationError(
+                "unsupported state schema_version",
+                module="protocol.models",
+                context={"schema_version": schema_version},
+            )
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        last_decision = _require_non_empty_string(self.last_decision, "last_decision")
+        if not is_valid_decision(last_decision):
+            raise ValidationError(
+                "last_decision is invalid",
+                module="protocol.models",
+                context={"value": last_decision},
+            )
+        object.__setattr__(self, "last_decision", last_decision)
+        object.__setattr__(self, "last_reason", _require_non_empty_string(self.last_reason, "last_reason"))
+        object.__setattr__(self, "last_cycle_utc", _require_non_empty_string(self.last_cycle_utc, "last_cycle_utc"))
+        if self.open_ticket is not None:
+            object.__setattr__(self, "open_ticket", _require_int(self.open_ticket, "open_ticket", minimum=0))
+        if self.position_side is not None:
+            side = _require_non_empty_string(self.position_side, "position_side")
+            if side not in {Side.BUY.value, Side.SELL.value}:
+                raise ValidationError(
+                    "position_side is invalid",
+                    module="protocol.models",
+                    context={"value": side},
+                )
+            object.__setattr__(self, "position_side", side)
+        if self.position_volume is not None:
+            object.__setattr__(
+                self,
+                "position_volume",
+                _require_number(self.position_volume, "position_volume"),
+            )
+
+    @property
+    def instance_key(self) -> InstanceKey:
+        return InstanceKey(self.account_id, self.symbol, self.magic)
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "last_decision": self.last_decision,
+            "last_reason": self.last_reason,
+            "last_cycle_utc": self.last_cycle_utc,
+        }
+        if self.open_ticket is not None:
+            data["open_ticket"] = self.open_ticket
+        if self.position_side is not None:
+            data["position_side"] = self.position_side
+        if self.position_volume is not None:
+            data["position_volume"] = self.position_volume
+        return data
+
+
+@dataclass(frozen=True)
+class SpreadStateRecord:
+    schema_version: str
+    account_id: str
+    symbol: str
+    magic: int
+    sample_count: int
+    mean_spread: float
+    std_spread: float
+    median_spread: float
+    current_spread: float
+    relative_spread: float
+    updated_utc: str
+
+    def __post_init__(self) -> None:
+        schema_version = _require_non_empty_string(self.schema_version, "schema_version")
+        if not is_supported_state_schema_version(schema_version):
+            raise ValidationError(
+                "unsupported state schema_version",
+                module="protocol.models",
+                context={"schema_version": schema_version},
+            )
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        object.__setattr__(
+            self,
+            "sample_count",
+            _require_int(self.sample_count, "sample_count", minimum=0),
+        )
+        object.__setattr__(self, "mean_spread", _require_number(self.mean_spread, "mean_spread"))
+        object.__setattr__(self, "std_spread", _require_number(self.std_spread, "std_spread"))
+        object.__setattr__(self, "median_spread", _require_number(self.median_spread, "median_spread"))
+        object.__setattr__(self, "current_spread", _require_number(self.current_spread, "current_spread"))
+        object.__setattr__(
+            self,
+            "relative_spread",
+            _require_number(self.relative_spread, "relative_spread"),
+        )
+        object.__setattr__(self, "updated_utc", _require_non_empty_string(self.updated_utc, "updated_utc"))
+
+    @property
+    def instance_key(self) -> InstanceKey:
+        return InstanceKey(self.account_id, self.symbol, self.magic)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "sample_count": self.sample_count,
+            "mean_spread": self.mean_spread,
+            "std_spread": self.std_spread,
+            "median_spread": self.median_spread,
+            "current_spread": self.current_spread,
+            "relative_spread": self.relative_spread,
+            "updated_utc": self.updated_utc,
+        }
+
+
+@dataclass(frozen=True)
+class DecisionJournalEntry:
+    decision_id: str
+    timestamp_utc: str
+    account_id: str
+    symbol: str
+    magic: int
+    decision: str
+    reason: str
+    risk_result: str
+    buy_score: float | None = None
+    sell_score: float | None = None
+    risk_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "decision_id", _require_non_empty_string(self.decision_id, "decision_id"))
+        object.__setattr__(self, "timestamp_utc", _require_non_empty_string(self.timestamp_utc, "timestamp_utc"))
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        decision = _require_non_empty_string(self.decision, "decision")
+        if not is_valid_decision(decision):
+            raise ValidationError(
+                "decision is invalid",
+                module="protocol.models",
+                context={"value": decision},
+            )
+        object.__setattr__(self, "decision", decision)
+        object.__setattr__(self, "reason", _require_non_empty_string(self.reason, "reason"))
+        risk_result = _require_non_empty_string(self.risk_result, "risk_result")
+        if not is_valid_risk_result(risk_result):
+            raise ValidationError(
+                "risk_result is invalid",
+                module="protocol.models",
+                context={"value": risk_result},
+            )
+        object.__setattr__(self, "risk_result", risk_result)
+        if self.buy_score is not None:
+            object.__setattr__(self, "buy_score", _require_number(self.buy_score, "buy_score"))
+        if self.sell_score is not None:
+            object.__setattr__(self, "sell_score", _require_number(self.sell_score, "sell_score"))
+        if self.risk_reason is not None:
+            object.__setattr__(
+                self,
+                "risk_reason",
+                _require_non_empty_string(self.risk_reason, "risk_reason"),
+            )
+
+    @property
+    def instance_key(self) -> InstanceKey:
+        return InstanceKey(self.account_id, self.symbol, self.magic)
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "decision_id": self.decision_id,
+            "timestamp_utc": self.timestamp_utc,
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "decision": self.decision,
+            "reason": self.reason,
+            "risk_result": self.risk_result,
+        }
+        if self.buy_score is not None:
+            data["buy_score"] = self.buy_score
+        if self.sell_score is not None:
+            data["sell_score"] = self.sell_score
+        if self.risk_reason is not None:
+            data["risk_reason"] = self.risk_reason
+        return data
+
+
+@dataclass(frozen=True)
+class TradeJournalEntry:
+    trade_id: str
+    timestamp_utc: str
+    account_id: str
+    symbol: str
+    magic: int
+    event: str
+    command_id: str
+    ack_status: str
+    reason: str
+    side: str | None = None
+    volume: float | None = None
+    price: float | None = None
+    ticket: int | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "trade_id", _require_non_empty_string(self.trade_id, "trade_id"))
+        object.__setattr__(self, "timestamp_utc", _require_non_empty_string(self.timestamp_utc, "timestamp_utc"))
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        event = _require_non_empty_string(self.event, "event")
+        if event not in TradeEvent._value2member_map_:
+            raise ValidationError(
+                "event is invalid",
+                module="protocol.models",
+                context={"value": event},
+            )
+        object.__setattr__(self, "event", event)
+        object.__setattr__(self, "command_id", _require_non_empty_string(self.command_id, "command_id"))
+        ack_status = _require_non_empty_string(self.ack_status, "ack_status")
+        if not is_valid_ack_status(ack_status):
+            raise ValidationError(
+                "ack_status is invalid",
+                module="protocol.models",
+                context={"value": ack_status},
+            )
+        object.__setattr__(self, "ack_status", ack_status)
+        object.__setattr__(self, "reason", _require_non_empty_string(self.reason, "reason"))
+        if self.side is not None:
+            side = _require_non_empty_string(self.side, "side")
+            if side not in {Side.BUY.value, Side.SELL.value}:
+                raise ValidationError(
+                    "side is invalid",
+                    module="protocol.models",
+                    context={"value": side},
+                )
+            object.__setattr__(self, "side", side)
+        if self.volume is not None:
+            object.__setattr__(self, "volume", _require_number(self.volume, "volume"))
+        if self.price is not None:
+            object.__setattr__(self, "price", _require_number(self.price, "price"))
+        if self.ticket is not None:
+            object.__setattr__(self, "ticket", _require_int(self.ticket, "ticket", minimum=0))
+
+    @property
+    def instance_key(self) -> InstanceKey:
+        return InstanceKey(self.account_id, self.symbol, self.magic)
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "trade_id": self.trade_id,
+            "timestamp_utc": self.timestamp_utc,
+            "account_id": self.account_id,
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "event": self.event,
+            "command_id": self.command_id,
+            "ack_status": self.ack_status,
+            "reason": self.reason,
+        }
+        if self.side is not None:
+            data["side"] = self.side
+        if self.volume is not None:
+            data["volume"] = self.volume
+        if self.price is not None:
+            data["price"] = self.price
+        if self.ticket is not None:
+            data["ticket"] = self.ticket
+        return data
+
+
+@dataclass(frozen=True)
+class ErrorJournalEntry:
+    error_id: str
+    timestamp_utc: str
+    account_id: str
+    module: str
+    error_type: str
+    message: str
+    symbol: str | None = None
+    magic: int | None = None
+    context: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "error_id", _require_non_empty_string(self.error_id, "error_id"))
+        object.__setattr__(self, "timestamp_utc", _require_non_empty_string(self.timestamp_utc, "timestamp_utc"))
+        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
+        object.__setattr__(self, "module", _require_non_empty_string(self.module, "module"))
+        error_type = _require_non_empty_string(self.error_type, "error_type")
+        if error_type not in ErrorType._value2member_map_:
+            raise ValidationError(
+                "error_type is invalid",
+                module="protocol.models",
+                context={"value": error_type},
+            )
+        object.__setattr__(self, "error_type", error_type)
+        object.__setattr__(self, "message", _require_non_empty_string(self.message, "message"))
+        if self.symbol is not None:
+            object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        if self.magic is not None:
+            object.__setattr__(self, "magic", _validate_magic(self.magic))
+        if self.context is not None and not isinstance(self.context, dict):
+            raise ValidationError(
+                "context must be a dict",
+                module="protocol.models",
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "error_id": self.error_id,
+            "timestamp_utc": self.timestamp_utc,
+            "account_id": self.account_id,
+            "module": self.module,
+            "error_type": self.error_type,
+            "message": self.message,
+        }
+        if self.symbol is not None:
+            data["symbol"] = self.symbol
+        if self.magic is not None:
+            data["magic"] = self.magic
+        if self.context is not None:
+            data["context"] = self.context
+        return data
+
+
+@dataclass(frozen=True)
+class MarketBar:
+    time_utc: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    symbol: str
+    timeframe: str
+    digits: int
+    point: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "time_utc", _require_non_empty_string(self.time_utc, "time_utc"))
+        object.__setattr__(self, "open", _require_number(self.open, "open"))
+        object.__setattr__(self, "high", _require_number(self.high, "high"))
+        object.__setattr__(self, "low", _require_number(self.low, "low"))
+        object.__setattr__(self, "close", _require_number(self.close, "close"))
+        object.__setattr__(self, "volume", _require_number(self.volume, "volume"))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        timeframe = _require_non_empty_string(self.timeframe, "timeframe")
+        if timeframe != TIMEFRAME_M1:
+            raise ValidationError(
+                f"timeframe must be {TIMEFRAME_M1}",
+                module="protocol.models",
+                context={"value": timeframe},
+            )
+        object.__setattr__(self, "timeframe", timeframe)
+        object.__setattr__(self, "digits", _require_int(self.digits, "digits", minimum=0))
+        object.__setattr__(self, "point", _require_number(self.point, "point"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SensorReading:
+    time_utc: str
+    bid: float
+    ask: float
+    spread: float
+    spread_points: float
+    symbol: str
+    digits: int
+    point: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "time_utc", _require_non_empty_string(self.time_utc, "time_utc"))
+        object.__setattr__(self, "bid", _require_number(self.bid, "bid"))
+        object.__setattr__(self, "ask", _require_number(self.ask, "ask"))
+        object.__setattr__(self, "spread", _require_number(self.spread, "spread"))
+        object.__setattr__(self, "spread_points", _require_number(self.spread_points, "spread_points"))
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "digits", _require_int(self.digits, "digits", minimum=0))
+        object.__setattr__(self, "point", _require_number(self.point, "point"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def validate_instance_key(account_id: str, symbol: str, magic: int) -> InstanceKey:
+    return InstanceKey(account_id=account_id, symbol=symbol, magic=magic)
