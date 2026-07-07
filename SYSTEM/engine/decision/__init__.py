@@ -14,6 +14,7 @@ from engine.decision.filters import (
     evaluate_volatility_filter,
 )
 from engine.decision.reason import build_reason
+from engine.decision.scorer import ScoringResult, compare_candidates, resolve_preferred_side
 from engine.decision.sell import (
     SellCandidate,
     build_sell_component_scores,
@@ -24,6 +25,7 @@ from engine.decision.sell import (
 __all__ = [
     "BuyCandidate",
     "NewsFilterResult",
+    "ScoringResult",
     "SellCandidate",
     "SpreadFilterResult",
     "VolatilityFilterResult",
@@ -35,7 +37,9 @@ __all__ = [
     "calculate_relative_volatility",
     "calculate_sell_candidate",
     "calculate_sell_score",
+    "compare_candidates",
     "evaluate_news_filter",
     "evaluate_spread_filter",
     "evaluate_volatility_filter",
+    "resolve_preferred_side",
 ]
