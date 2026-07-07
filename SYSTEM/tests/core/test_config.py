@@ -31,6 +31,10 @@ def _valid_payload() -> dict[str, Any]:
             "cycle_interval_ms": 1000,
             "ack_timeout_ms": 5000,
             "retry_max": 3,
+            "retry_delay_ms": 200,
+            "data_stale_threshold_ms": 15000,
+            "cycle_max_duration_ms": 30000,
+            "metrics_interval_ms": 60000,
             "auto_discover_instances": True,
         },
         "instances": [

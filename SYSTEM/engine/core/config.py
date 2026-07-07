@@ -33,6 +33,10 @@ _RUNTIME_FIELDS = frozenset(
         "cycle_interval_ms",
         "ack_timeout_ms",
         "retry_max",
+        "retry_delay_ms",
+        "data_stale_threshold_ms",
+        "cycle_max_duration_ms",
+        "metrics_interval_ms",
         "auto_discover_instances",
     }
 )

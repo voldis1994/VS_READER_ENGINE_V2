@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from engine.protocol.identity import (
+    validate_account_id as _shared_validate_account_id,
+    validate_magic as _shared_validate_magic,
+    validate_symbol as _shared_validate_symbol,
+)
 from engine.protocol.constants import (
     ErrorType,
     LogLevel,
@@ -78,15 +83,15 @@ def _require_bool(value: bool, field_name: str) -> bool:
 
 
 def _validate_magic(magic: int) -> int:
-    return _require_int(magic, "magic", minimum=0)
+    return _shared_validate_magic(magic, "protocol.models")
 
 
 def _validate_account_id(account_id: str) -> str:
-    return _require_non_empty_string(account_id, "account_id")
+    return _shared_validate_account_id(account_id, "protocol.models")
 
 
 def _validate_symbol(symbol: str) -> str:
-    return _require_non_empty_string(symbol, "symbol")
+    return _shared_validate_symbol(symbol, "protocol.models")
 
 
 @dataclass(frozen=True)
@@ -190,6 +195,10 @@ class RuntimeConfig:
     cycle_interval_ms: int
     ack_timeout_ms: int
     retry_max: int
+    retry_delay_ms: int
+    data_stale_threshold_ms: int
+    cycle_max_duration_ms: int
+    metrics_interval_ms: int
     auto_discover_instances: bool
 
     def __post_init__(self) -> None:
@@ -210,6 +219,34 @@ class RuntimeConfig:
         )
         object.__setattr__(
             self,
+            "retry_delay_ms",
+            _require_int(self.retry_delay_ms, "runtime.retry_delay_ms", minimum=0),
+        )
+        object.__setattr__(
+            self,
+            "data_stale_threshold_ms",
+            _require_int(
+                self.data_stale_threshold_ms,
+                "runtime.data_stale_threshold_ms",
+                minimum=1,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "cycle_max_duration_ms",
+            _require_int(
+                self.cycle_max_duration_ms,
+                "runtime.cycle_max_duration_ms",
+                minimum=1,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "metrics_interval_ms",
+            _require_int(self.metrics_interval_ms, "runtime.metrics_interval_ms", minimum=1),
+        )
+        object.__setattr__(
+            self,
             "auto_discover_instances",
             _require_bool(self.auto_discover_instances, "runtime.auto_discover_instances"),
         )
@@ -219,6 +256,10 @@ class RuntimeConfig:
             "cycle_interval_ms": self.cycle_interval_ms,
             "ack_timeout_ms": self.ack_timeout_ms,
             "retry_max": self.retry_max,
+            "retry_delay_ms": self.retry_delay_ms,
+            "data_stale_threshold_ms": self.data_stale_threshold_ms,
+            "cycle_max_duration_ms": self.cycle_max_duration_ms,
+            "metrics_interval_ms": self.metrics_interval_ms,
             "auto_discover_instances": self.auto_discover_instances,
         }
 

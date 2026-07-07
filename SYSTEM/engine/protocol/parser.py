@@ -401,6 +401,18 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             cycle_interval_ms=_require_key(runtime_data, "cycle_interval_ms", "system_config"),
             ack_timeout_ms=_require_key(runtime_data, "ack_timeout_ms", "system_config"),
             retry_max=_require_key(runtime_data, "retry_max", "system_config"),
+            retry_delay_ms=_require_key(runtime_data, "retry_delay_ms", "system_config"),
+            data_stale_threshold_ms=_require_key(
+                runtime_data,
+                "data_stale_threshold_ms",
+                "system_config",
+            ),
+            cycle_max_duration_ms=_require_key(
+                runtime_data,
+                "cycle_max_duration_ms",
+                "system_config",
+            ),
+            metrics_interval_ms=_require_key(runtime_data, "metrics_interval_ms", "system_config"),
             auto_discover_instances=_require_key(
                 runtime_data,
                 "auto_discover_instances",

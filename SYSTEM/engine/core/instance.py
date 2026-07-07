@@ -15,6 +15,7 @@ from engine.protocol.constants import (
     FILENAME_STATUS,
     FILENAME_TRADE_JOURNAL,
 )
+from engine.protocol.identity import validate_account_id, validate_magic, validate_symbol
 from engine.protocol.errors import ValidationError
 
 INSTANCE_MODULE = "core.instance"
@@ -24,44 +25,6 @@ def _validation_error(message: str, **context: object) -> ValidationError:
     return ValidationError(message, module=INSTANCE_MODULE, context=dict(context))
 
 
-def _validate_account_id(account_id: str) -> str:
-    if not isinstance(account_id, str):
-        raise _validation_error(
-            "account_id must be a string",
-            field="account_id",
-            value_type=type(account_id).__name__,
-        )
-    value = account_id.strip()
-    if not value:
-        raise _validation_error("account_id must not be empty", field="account_id")
-    return value
-
-
-def _validate_symbol(symbol: str) -> str:
-    if not isinstance(symbol, str):
-        raise _validation_error(
-            "symbol must be a string",
-            field="symbol",
-            value_type=type(symbol).__name__,
-        )
-    value = symbol.strip()
-    if not value:
-        raise _validation_error("symbol must not be empty", field="symbol")
-    return value
-
-
-def _validate_magic(magic: int) -> int:
-    if isinstance(magic, bool) or not isinstance(magic, int):
-        raise _validation_error(
-            "magic must be an integer",
-            field="magic",
-            value_type=type(magic).__name__,
-        )
-    if magic < 0:
-        raise _validation_error("magic must be >= 0", field="magic", value=magic)
-    return magic
-
-
 @dataclass(frozen=True)
 class Instance:
     account_id: str
@@ -69,9 +32,9 @@ class Instance:
     magic: int
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "account_id", _validate_account_id(self.account_id))
-        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
-        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        object.__setattr__(self, "account_id", validate_account_id(self.account_id, INSTANCE_MODULE))
+        object.__setattr__(self, "symbol", validate_symbol(self.symbol, INSTANCE_MODULE))
+        object.__setattr__(self, "magic", validate_magic(self.magic, INSTANCE_MODULE))
 
     @property
     def instance_key(self) -> tuple[str, str, int]:
@@ -79,9 +42,9 @@ class Instance:
 
     def matches(self, account_id: str, symbol: str, magic: int) -> bool:
         return self.instance_key == (
-            _validate_account_id(account_id),
-            _validate_symbol(symbol),
-            _validate_magic(magic),
+            validate_account_id(account_id, INSTANCE_MODULE),
+            validate_symbol(symbol, INSTANCE_MODULE),
+            validate_magic(magic, INSTANCE_MODULE),
         )
 
     def market_filename(self) -> str:

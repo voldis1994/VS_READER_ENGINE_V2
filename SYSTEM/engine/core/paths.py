@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from engine.protocol.constants import DEFAULT_ROOT_PATH, FILENAME_UNIVERSE
+from engine.protocol.identity import validate_account_id, validate_magic, validate_symbol
 from engine.protocol.errors import ValidationError
 
 PATHS_MODULE = "core.paths"
@@ -41,50 +42,8 @@ def _normalize_relative_path(value: str, field_name: str) -> str:
     return normalized
 
 
-def _validate_account_id(account_id: str) -> str:
-    if not isinstance(account_id, str):
-        raise _validation_error(
-            "account_id must be a string",
-            field="account_id",
-            value_type=type(account_id).__name__,
-        )
-    stripped = account_id.strip()
-    if not stripped:
-        raise _validation_error("account_id must not be empty", field="account_id")
-    return stripped
-
-
-def _validate_symbol(symbol: str) -> str:
-    if not isinstance(symbol, str):
-        raise _validation_error(
-            "symbol must be a string",
-            field="symbol",
-            value_type=type(symbol).__name__,
-        )
-    stripped = symbol.strip()
-    if not stripped:
-        raise _validation_error("symbol must not be empty", field="symbol")
-    return stripped
-
-
-def _validate_magic(magic: int) -> int:
-    if isinstance(magic, bool) or not isinstance(magic, int):
-        raise _validation_error(
-            "magic must be an integer",
-            field="magic",
-            value_type=type(magic).__name__,
-        )
-    if magic < 0:
-        raise _validation_error(
-            "magic must be >= 0",
-            field="magic",
-            value=magic,
-        )
-    return magic
-
-
 def _instance_segment(symbol: str, magic: int) -> str:
-    return f"{_validate_symbol(symbol)}_{_validate_magic(magic)}"
+    return f"{validate_symbol(symbol, PATHS_MODULE)}_{validate_magic(magic, PATHS_MODULE)}"
 
 
 class SystemPaths:
@@ -139,7 +98,7 @@ class SystemPaths:
         return self.universe_dir / FILENAME_UNIVERSE
 
     def account_dir(self, account_id: str) -> Path:
-        return self.clients_dir / _validate_account_id(account_id)
+        return self.clients_dir / validate_account_id(account_id, PATHS_MODULE)
 
     def account_journal_dir(self, account_id: str) -> Path:
         return self.account_dir(account_id) / ACCOUNT_JOURNAL_DIRNAME
@@ -148,10 +107,16 @@ class SystemPaths:
         return self.account_dir(account_id) / ACCOUNT_STATE_DIRNAME
 
     def instance_cache_dir(self, account_id: str, symbol: str, magic: int) -> Path:
-        return self.cache_dir / _validate_account_id(account_id) / _instance_segment(symbol, magic)
+        return self.cache_dir / validate_account_id(account_id, PATHS_MODULE) / _instance_segment(
+            symbol,
+            magic,
+        )
 
     def instance_history_dir(self, account_id: str, symbol: str, magic: int) -> Path:
-        return self.history_dir / _validate_account_id(account_id) / _instance_segment(symbol, magic)
+        return self.history_dir / validate_account_id(account_id, PATHS_MODULE) / _instance_segment(
+            symbol,
+            magic,
+        )
 
     def ensure_directories(self) -> None:
         for directory in (
