@@ -9,11 +9,19 @@ from engine.core.instance import Instance
 from engine.decision.buy import BuyCandidate
 from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.decision.sell import SellCandidate
-from engine.execution.command import OrderCommand, build_order_command
+from engine.execution.command import (
+    OrderCommand,
+    build_close_order_command,
+    build_management_order_command,
+    build_modify_order_command,
+    build_order_command,
+    resolve_order_command,
+)
 from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.protocol.constants import Decision, OrderAction, RiskResult, Side
 from engine.protocol.models import RiskConfig, StatusRecord, UniverseRecord
 from engine.risk.engine import RiskEngineResult, RiskEngineTradeParams, run_risk_engine
+from engine.risk.trade_management import TradeManagementResult
 from engine.state.instance_state import InstanceState
 from tests.core.config_payload import valid_system_config_payload
 
@@ -289,3 +297,134 @@ def test_build_order_command_from_decision_and_risk_engines() -> None:
         assert command.volume is not None and command.volume > 0
     else:
         assert command.action == OrderAction.NONE.value
+
+
+def test_build_modify_order_command_sets_ticket_and_levels() -> None:
+    command = build_modify_order_command(
+        ticket=123456,
+        side=Side.BUY.value,
+        stop_loss=1.10100,
+        take_profit=1.11170,
+        reason="TRADE_MANAGEMENT_BREAKEVEN: stop loss moved to entry",
+        decision_id="decision-modify",
+        command_id="cmd-modify",
+    )
+
+    assert command.action == OrderAction.MODIFY.value
+    assert command.ticket == 123456
+    assert command.side == Side.BUY.value
+    assert command.stop_loss == pytest.approx(1.10100)
+    assert command.take_profit == pytest.approx(1.11170)
+    assert command.volume is None
+
+
+def test_build_close_order_command_sets_ticket_and_volume() -> None:
+    command = build_close_order_command(
+        ticket=654321,
+        side=Side.SELL.value,
+        volume=0.05,
+        reason="TRADE_MANAGEMENT_PARTIAL_CLOSE: partial volume close triggered",
+        decision_id="decision-close",
+        command_id="cmd-close",
+    )
+
+    assert command.action == OrderAction.CLOSE.value
+    assert command.ticket == 654321
+    assert command.side == Side.SELL.value
+    assert command.volume == pytest.approx(0.05)
+    assert command.stop_loss is None
+    assert command.take_profit is None
+
+
+def test_build_management_order_command_returns_none_for_none_action() -> None:
+    result = TradeManagementResult(action=OrderAction.NONE.value, reason="")
+    command = build_management_order_command(
+        result,
+        ticket=123456,
+        side=Side.BUY.value,
+        decision_id="decision-mgmt",
+    )
+    assert command is None
+
+
+def test_build_management_order_command_maps_modify_result() -> None:
+    result = TradeManagementResult(
+        action=OrderAction.MODIFY.value,
+        reason="TRADE_MANAGEMENT_TRAILING: stop loss raised to follow structure",
+        stop_loss=1.10200,
+        take_profit=1.11170,
+    )
+    command = build_management_order_command(
+        result,
+        ticket=123456,
+        side=Side.BUY.value,
+        decision_id="decision-mgmt",
+        command_id="cmd-mgmt-modify",
+    )
+
+    assert command is not None
+    assert command.action == OrderAction.MODIFY.value
+    assert command.command_id == "cmd-mgmt-modify"
+    assert command.stop_loss == pytest.approx(1.10200)
+
+
+def test_build_management_order_command_maps_close_result() -> None:
+    result = TradeManagementResult(
+        action=OrderAction.CLOSE.value,
+        reason="TRADE_MANAGEMENT_TIME_STOP: maximum bars in trade reached",
+        volume=0.1,
+    )
+    command = build_management_order_command(
+        result,
+        ticket=123456,
+        side=Side.BUY.value,
+        decision_id="decision-mgmt",
+    )
+
+    assert command is not None
+    assert command.action == OrderAction.CLOSE.value
+    assert command.volume == pytest.approx(0.1)
+
+
+def test_resolve_order_command_prefers_management_over_wait_decision() -> None:
+    decision_result = _manual_decision_result(
+        decision=Decision.WAIT.value,
+        preferred_side=Side.NONE.value,
+        reason="WAIT: equal scores",
+    )
+    management_result = TradeManagementResult(
+        action=OrderAction.MODIFY.value,
+        reason="TRADE_MANAGEMENT_BREAKEVEN: stop loss moved to entry",
+        stop_loss=1.10100,
+        take_profit=1.11170,
+    )
+
+    command = resolve_order_command(
+        decision_result,
+        _allow_risk_result(),
+        management_result,
+        ticket=123456,
+        side=Side.BUY.value,
+        command_id="cmd-resolve",
+    )
+
+    assert command.action == OrderAction.MODIFY.value
+    assert command.ticket == 123456
+
+
+def test_resolve_order_command_falls_back_to_decision_command() -> None:
+    decision_result = _manual_decision_result(
+        decision=Decision.BUY.value,
+        preferred_side=Side.BUY.value,
+        reason="BUY: preferred side selected",
+    )
+
+    command = resolve_order_command(
+        decision_result,
+        _allow_risk_result(),
+        None,
+        ticket=123456,
+        side=Side.BUY.value,
+    )
+
+    assert command.action == OrderAction.OPEN.value

@@ -8,7 +8,14 @@ from engine.execution.ack_reader import (
     read_ack_record,
     validate_ack_record,
 )
-from engine.execution.command import OrderCommand, build_order_command
+from engine.execution.command import (
+    OrderCommand,
+    build_close_order_command,
+    build_management_order_command,
+    build_modify_order_command,
+    build_order_command,
+    resolve_order_command,
+)
 from engine.execution.control_writer import (
     build_control_command,
     build_control_path,
@@ -34,6 +41,9 @@ __all__ = [
     "build_ack_timeout_interpretation",
     "build_control_command",
     "build_control_path",
+    "build_close_order_command",
+    "build_management_order_command",
+    "build_modify_order_command",
     "build_order_command",
     "build_trade_intent_params",
     "execution_engine_performs_analysis",
@@ -43,6 +53,7 @@ __all__ = [
     "read_ack_for_command",
     "read_ack_for_command_with_journal",
     "read_ack_record",
+    "resolve_order_command",
     "run_execution_engine",
     "validate_ack_record",
     "wait_for_ack",
