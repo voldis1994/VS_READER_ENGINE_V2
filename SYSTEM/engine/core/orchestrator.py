@@ -197,11 +197,11 @@ def run_runtime_cycles(
         failed_count=failed_count,
         total_errors=sum(monitoring_state.error_counts.values()),
     )
-    flush_runtime_performance(runtime, performance_state, force=True)
+    flush_runtime_performance(runtime, performance_state)
 
     processed_accounts: set[str] = set()
     for instance in target_instances:
-        archive_market_snapshot(runtime.paths, instance)
+        archive_market_snapshot(runtime.paths, instance, current_utc=resolved_timestamp)
         if instance.account_id in processed_accounts:
             continue
         rotate_account_journals(

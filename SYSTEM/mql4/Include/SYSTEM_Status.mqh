@@ -83,29 +83,67 @@ bool SYSTEM_FindOpenPositionForInstance(
    return false;
 }
 
-string SYSTEM_BuildOpenPositionsJson(const string symbol, const int magic)
+string SYSTEM_BuildOpenPositionEntryJson(
+   const string symbol,
+   const int magic,
+   const int ticket,
+   const string side,
+   const double volume,
+   const double entry_price,
+   const double stop_loss,
+   const double take_profit
+)
 {
-   int ticket = 0;
-   string side = "";
-   double volume = 0.0;
-   double entry_price = 0.0;
-   double stop_loss = 0.0;
-   double take_profit = 0.0;
-   if(!SYSTEM_FindOpenPositionForInstance(symbol, magic, ticket, side, volume, entry_price, stop_loss, take_profit))
-      return "";
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+   if(digits <= 0)
+      digits = 5;
 
-   string json = ",\n  \"open_positions\": [\n";
-   json = json + "    {\n";
+   string json = "    {\n";
    json = json + "      \"symbol\": \"" + SYSTEM_EscapeJsonString(symbol) + "\",\n";
    json = json + "      \"magic\": " + IntegerToString(magic) + ",\n";
    json = json + "      \"ticket\": " + IntegerToString(ticket) + ",\n";
    json = json + "      \"side\": \"" + SYSTEM_EscapeJsonString(side) + "\",\n";
    json = json + "      \"volume\": " + SYSTEM_FormatJsonNumber(volume, 2) + ",\n";
-   json = json + "      \"entry_price\": " + SYSTEM_FormatJsonNumber(entry_price, Digits) + ",\n";
-   json = json + "      \"stop_loss\": " + SYSTEM_FormatJsonNumber(stop_loss, Digits) + ",\n";
-   json = json + "      \"take_profit\": " + SYSTEM_FormatJsonNumber(take_profit, Digits) + "\n";
-   json = json + "    }\n";
-   json = json + "  ]";
+   json = json + "      \"entry_price\": " + SYSTEM_FormatJsonNumber(entry_price, digits) + ",\n";
+   json = json + "      \"stop_loss\": " + SYSTEM_FormatJsonNumber(stop_loss, digits) + ",\n";
+   json = json + "      \"take_profit\": " + SYSTEM_FormatJsonNumber(take_profit, digits) + "\n";
+   json = json + "    }";
+   return json;
+}
+
+string SYSTEM_BuildOpenPositionsJson()
+{
+   string json = "";
+   int count = 0;
+
+   for(int index = OrdersTotal() - 1; index >= 0; index--)
+   {
+      if(!OrderSelect(index, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+         continue;
+
+      string side = (OrderType() == OP_BUY) ? "BUY" : "SELL";
+      if(count == 0)
+         json = ",\n  \"open_positions\": [\n";
+      else
+         json = json + ",\n";
+
+      json = json + SYSTEM_BuildOpenPositionEntryJson(
+         OrderSymbol(),
+         OrderMagicNumber(),
+         OrderTicket(),
+         side,
+         OrderLots(),
+         OrderOpenPrice(),
+         OrderStopLoss(),
+         OrderTakeProfit()
+      );
+      count++;
+   }
+
+   if(count > 0)
+      json = json + "\n  ]";
    return json;
 }
 
@@ -134,7 +172,7 @@ string SYSTEM_BuildStatusJson(
    json = json + "  \"trade_allowed\": " + SYSTEM_FormatJsonBoolean(trade_allowed);
    if(StringLen(last_error) > 0)
       json = json + ",\n  \"last_error\": \"" + SYSTEM_EscapeJsonString(last_error) + "\"";
-   json = json + SYSTEM_BuildOpenPositionsJson(symbol, magic);
+   json = json + SYSTEM_BuildOpenPositionsJson();
    json = json + "\n}\n";
    return json;
 }

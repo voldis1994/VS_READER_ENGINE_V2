@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, MutableMapping
@@ -9,6 +11,7 @@ from engine.core.cycle import InstanceCycleResult
 from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.logging_setup import log_event
+from engine.core.monitoring_store import PersistedMonitoringMetrics, persist_instance_metrics
 from engine.core.retry import RetryAlertContext, build_retry_policy
 from engine.loader.market_loader import load_market_data
 from engine.protocol.constants import LogLevel
@@ -20,6 +23,8 @@ INSTANCE_HEALTH_VALID = "VALID"
 INSTANCE_HEALTH_BLOCKED = "BLOCKED"
 INSTANCE_HEALTH_ERROR = "ERROR"
 
+ERROR_RATE_WINDOW_MS = 60_000
+
 
 @dataclass(frozen=True)
 class InstanceMonitoringMetrics:
@@ -28,12 +33,14 @@ class InstanceMonitoringMetrics:
     ack_latency_ms: int | None
     data_freshness_ms: int | None
     error_count: int
+    error_rate_per_min: float
     instance_health: str
 
 
 @dataclass
 class MonitoringState:
     error_counts: dict[tuple[str, str, int], int] = field(default_factory=dict)
+    error_timestamps: dict[tuple[str, str, int], deque[float]] = field(default_factory=dict)
 
 
 def parse_utc_timestamp(value: str) -> datetime:
@@ -49,8 +56,8 @@ def compute_elapsed_ms(start_utc: str, end_utc: str) -> int:
     return max(0, int(delta.total_seconds() * 1000))
 
 
-def compute_data_freshness_ms(market_modified_utc: str, current_utc: str) -> int:
-    return compute_elapsed_ms(market_modified_utc, current_utc)
+def compute_data_freshness_ms(data_timestamp_utc: str, current_utc: str) -> int:
+    return compute_elapsed_ms(data_timestamp_utc, current_utc)
 
 
 def is_data_stale(freshness_ms: int, threshold_ms: int) -> bool:
@@ -89,31 +96,93 @@ def resolve_ack_latency_ms(
     return None
 
 
-def record_cycle_error(state: MonitoringState, instance: Instance) -> MonitoringState:
+def _prune_error_timestamps(
+    timestamps: deque[float],
+    *,
+    current_monotonic: float,
+    window_ms: int = ERROR_RATE_WINDOW_MS,
+) -> None:
+    cutoff = current_monotonic - (window_ms / 1000.0)
+    while timestamps and timestamps[0] < cutoff:
+        timestamps.popleft()
+
+
+def compute_error_rate_per_min(
+    timestamps: deque[float],
+    *,
+    current_monotonic: float,
+    window_ms: int = ERROR_RATE_WINDOW_MS,
+) -> float:
+    _prune_error_timestamps(timestamps, current_monotonic=current_monotonic, window_ms=window_ms)
+    if not timestamps:
+        return 0.0
+    return len(timestamps) * (60_000.0 / window_ms)
+
+
+def record_cycle_error(
+    state: MonitoringState,
+    instance: Instance,
+    *,
+    current_monotonic: float | None = None,
+) -> MonitoringState:
     key = instance.instance_key
     state.error_counts[key] = state.error_counts.get(key, 0) + 1
+    timestamps = state.error_timestamps.setdefault(key, deque())
+    timestamps.append(current_monotonic if current_monotonic is not None else time.monotonic())
+    _prune_error_timestamps(timestamps, current_monotonic=timestamps[-1])
     return state
+
+
+def resolve_market_timestamp_utc(cycle_result: InstanceCycleResult) -> str | None:
+    if cycle_result.market_data_utc is not None:
+        return cycle_result.market_data_utc
+    return None
+
+
+def _load_market_bar_timestamp_utc(
+    paths,
+    instance: Instance,
+    *,
+    cache: MutableMapping[str, Any] | None,
+    retry_policy,
+    retry_alert_context: RetryAlertContext,
+) -> str | None:
+    from engine.core.clock import format_utc_timestamp
+    from engine.core.cycle import validate_market_for_cycle
+    from engine.validator.market_validator import ValidationResult
+
+    try:
+        market_raw = load_market_data(
+            paths,
+            instance,
+            cache=cache,
+            retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
+        )
+        market_bars = validate_market_for_cycle(market_raw)
+    except SystemError:
+        return None
+    if isinstance(market_bars, ValidationResult) or not market_bars:
+        return None
+    return format_utc_timestamp(market_bars[-1].time_utc)
 
 
 def build_instance_metrics(
     instance: Instance,
     cycle_result: InstanceCycleResult,
     *,
-    market_modified_utc: str | None,
+    market_timestamp_utc: str | None,
     measured_ack_latency_ms: int | None,
     ack_timeout_ms: int,
     current_utc: str,
     error_count: int,
+    error_rate_per_min: float,
 ) -> InstanceMonitoringMetrics:
     cycle_latency_ms = None
     data_freshness_ms = None
-    if market_modified_utc is not None:
-        data_freshness_ms = compute_data_freshness_ms(market_modified_utc, current_utc)
-        if cycle_result.decision_result is not None:
-            cycle_latency_ms = compute_elapsed_ms(
-                market_modified_utc,
-                cycle_result.timestamp_utc,
-            )
+    if market_timestamp_utc is not None:
+        data_freshness_ms = compute_data_freshness_ms(market_timestamp_utc, current_utc)
+        cycle_latency_ms = compute_elapsed_ms(market_timestamp_utc, cycle_result.timestamp_utc)
 
     return InstanceMonitoringMetrics(
         instance=instance,
@@ -125,6 +194,7 @@ def build_instance_metrics(
         ),
         data_freshness_ms=data_freshness_ms,
         error_count=error_count,
+        error_rate_per_min=error_rate_per_min,
         instance_health=resolve_instance_health(cycle_result),
     )
 
@@ -138,7 +208,8 @@ def format_metrics_message(metrics: InstanceMonitoringMetrics) -> str:
         f"metrics account={instance.account_id} symbol={instance.symbol} "
         f"magic={instance.magic} health={metrics.instance_health} "
         f"cycle_latency_ms={cycle_latency} ack_latency_ms={ack_latency} "
-        f"data_freshness_ms={freshness} error_count={metrics.error_count}"
+        f"data_freshness_ms={freshness} error_count={metrics.error_count} "
+        f"error_rate_per_min={metrics.error_rate_per_min:.2f}"
     )
 
 
@@ -165,38 +236,57 @@ def observe_instance_cycle(
     measured_ack_latency_ms: int | None = None,
 ) -> MonitoringState:
     monitoring_state = state or MonitoringState()
+    current_monotonic = time.monotonic()
     if cycle_result.error_logged:
-        record_cycle_error(monitoring_state, instance)
+        record_cycle_error(monitoring_state, instance, current_monotonic=current_monotonic)
 
-    market_modified_utc: str | None = None
-    retry_policy = build_retry_policy(runtime.config.runtime)
-    retry_alert_context = RetryAlertContext(
-        logger=runtime.system_logger,
-        instance=instance,
-        operation="monitoring market load",
-    )
-    try:
-        market_modified_utc = load_market_data(
+    market_timestamp_utc = resolve_market_timestamp_utc(cycle_result)
+    if market_timestamp_utc is None:
+        retry_policy = build_retry_policy(runtime.config.runtime)
+        retry_alert_context = RetryAlertContext(
+            logger=runtime.system_logger,
+            instance=instance,
+            operation="monitoring market load",
+        )
+        market_timestamp_utc = _load_market_bar_timestamp_utc(
             runtime.paths,
             instance,
             cache=cache,
             retry_policy=retry_policy,
             retry_alert_context=retry_alert_context,
-        ).modified_utc
-    except SystemError:
-        market_modified_utc = None
+        )
 
-    error_count = monitoring_state.error_counts.get(instance.instance_key, 0)
+    key = instance.instance_key
+    error_count = monitoring_state.error_counts.get(key, 0)
+    timestamps = monitoring_state.error_timestamps.setdefault(key, deque())
+    error_rate_per_min = compute_error_rate_per_min(
+        timestamps,
+        current_monotonic=current_monotonic,
+    )
     metrics = build_instance_metrics(
         instance,
         cycle_result,
-        market_modified_utc=market_modified_utc,
+        market_timestamp_utc=market_timestamp_utc,
         measured_ack_latency_ms=measured_ack_latency_ms,
         ack_timeout_ms=runtime.config.runtime.ack_timeout_ms,
         current_utc=cycle_result.timestamp_utc,
         error_count=error_count,
+        error_rate_per_min=error_rate_per_min,
     )
     log_instance_metrics(runtime.system_logger, metrics)
+    persist_instance_metrics(
+        runtime.paths,
+        instance,
+        PersistedMonitoringMetrics(
+            timestamp_utc=cycle_result.timestamp_utc,
+            cycle_latency_ms=metrics.cycle_latency_ms,
+            ack_latency_ms=metrics.ack_latency_ms,
+            data_freshness_ms=metrics.data_freshness_ms,
+            error_count=metrics.error_count,
+            error_rate_per_min=metrics.error_rate_per_min,
+            instance_health=metrics.instance_health,
+        ),
+    )
 
     stale_threshold_ms = runtime.config.runtime.data_stale_threshold_ms
     data_stale = (

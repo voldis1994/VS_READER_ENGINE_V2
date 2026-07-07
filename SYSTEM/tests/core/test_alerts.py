@@ -220,11 +220,12 @@ def test_format_metrics_message_includes_metric_fields() -> None:
             completed=True,
             error_logged=False,
         ),
-        market_modified_utc="2026-07-07T06:00:00.000Z",
+        market_timestamp_utc="2026-07-07T06:00:00.000Z",
         measured_ack_latency_ms=1200,
         ack_timeout_ms=5000,
         current_utc="2026-07-07T06:00:20.000Z",
         error_count=0,
+        error_rate_per_min=0.0,
     )
     rendered = format_metrics_message(metrics)
     assert "ack_latency_ms=1200" in rendered
@@ -243,11 +244,12 @@ def test_log_instance_metrics_writes_metrics_to_system_log(tmp_path: Path) -> No
             completed=True,
             error_logged=False,
         ),
-        market_modified_utc="2026-07-07T06:00:00.000Z",
+        market_timestamp_utc="2026-07-07T06:00:00.000Z",
         measured_ack_latency_ms=None,
         ack_timeout_ms=5000,
         current_utc="2026-07-07T06:00:10.000Z",
         error_count=0,
+        error_rate_per_min=0.0,
     )
     log_instance_metrics(logger, metrics)
     for handler in logger.handlers:
@@ -257,10 +259,7 @@ def test_log_instance_metrics_writes_metrics_to_system_log(tmp_path: Path) -> No
 
 def test_data_stale_generates_warning_alert(tmp_path: Path) -> None:
     runtime, instance = _startup_runtime(tmp_path)
-    market_path = runtime.paths.account_dir(instance.account_id) / instance.market_filename()
-    old_time = time.time() - 120
-    os.utime(market_path, (old_time, old_time))
-    current_utc = format_utc_timestamp(datetime.fromtimestamp(time.time(), tz=timezone.utc))
+    current_utc = "2026-07-07T06:02:00.000Z"
 
     observe_instance_cycle(
         runtime,
@@ -270,6 +269,7 @@ def test_data_stale_generates_warning_alert(tmp_path: Path) -> None:
             timestamp_utc=current_utc,
             completed=True,
             error_logged=False,
+            market_data_utc="2026-07-07T06:00:00.000Z",
         ),
     )
     for handler in runtime.system_logger.handlers:

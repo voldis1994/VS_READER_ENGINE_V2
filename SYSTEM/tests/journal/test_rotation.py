@@ -44,6 +44,7 @@ def test_rotate_journal_file_moves_old_lines_to_history(tmp_path: Path) -> None:
     assert result.archived_lines == 1
     assert result.retained_lines == 1
     assert result.archive_path is not None
+    assert result.archive_path.name == "decision_2026-07-07.jsonl"
     assert result.archive_path.exists()
     retained = journal_path.read_text(encoding="utf-8")
     assert recent_time in retained

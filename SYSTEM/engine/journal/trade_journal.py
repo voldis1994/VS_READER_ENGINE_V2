@@ -9,7 +9,13 @@ from engine.core.atomic_io import atomic_read_text, atomic_write_text
 from engine.core.clock import now_utc
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.protocol.constants import AckStatus, REASON_EXTERNAL_POSITION_CLOSE, TradeEvent
+from engine.protocol.constants import (
+    AckStatus,
+    REASON_ACK_TIMEOUT,
+    REASON_EXTERNAL_PARTIAL_CLOSE,
+    REASON_EXTERNAL_POSITION_CLOSE,
+    TradeEvent,
+)
 from engine.protocol.errors import DataIOError
 from engine.protocol.models import AckRecord, TradeJournalEntry
 from engine.protocol.parser import parse_trade_journal_line
@@ -198,6 +204,60 @@ def update_trade_journal_ack(
     return updated_entry
 
 
+def log_trade_ack_timeout(
+    paths: SystemPaths,
+    instance: Instance,
+    *,
+    command_id: str,
+    timestamp_utc: str | None = None,
+) -> TradeJournalEntry:
+    journal_path = build_trade_journal_path(paths, instance)
+    lines = _read_journal_lines(journal_path)
+    if not lines:
+        raise _data_io_error(
+            "trade journal entry not found for ack timeout update",
+            command_id=command_id,
+            path=str(journal_path),
+        )
+
+    updated_entry: TradeJournalEntry | None = None
+    rewritten_lines: list[str] = []
+    for line in lines:
+        entry = parse_trade_journal_line(line)
+        if entry.command_id == command_id:
+            updated_entry = TradeJournalEntry(
+                trade_id=entry.trade_id,
+                timestamp_utc=timestamp_utc or now_utc(),
+                account_id=entry.account_id,
+                symbol=entry.symbol,
+                magic=entry.magic,
+                event=entry.event,
+                command_id=entry.command_id,
+                ack_status=AckStatus.FAILED.value,
+                reason=build_reason(REASON_ACK_TIMEOUT, "ack wait timed out", command_id=command_id),
+                side=entry.side,
+                volume=entry.volume,
+                price=entry.price,
+                ticket=entry.ticket,
+            )
+            rewritten_lines.append(write_trade_journal_entry(updated_entry))
+        else:
+            rewritten_lines.append(line)
+
+    if updated_entry is None:
+        raise _data_io_error(
+            "trade journal entry not found for ack timeout update",
+            command_id=command_id,
+            path=str(journal_path),
+        )
+
+    output = "\n".join(rewritten_lines)
+    if output:
+        output = f"{output}\n"
+    atomic_write_text(journal_path, output)
+    return updated_entry
+
+
 def log_trade_intent(
     paths: SystemPaths,
     instance: Instance,
@@ -257,6 +317,41 @@ def log_external_position_close(
         reason=reason,
         side=side,
         volume=volume,
+        ticket=ticket,
+    )
+    append_trade_journal_entry(paths, instance, entry)
+    return entry
+
+
+def log_external_partial_position_close(
+    paths: SystemPaths,
+    instance: Instance,
+    *,
+    ticket: int | None,
+    side: str | None,
+    closed_volume: float,
+    remaining_volume: float,
+    timestamp_utc: str | None = None,
+) -> TradeJournalEntry:
+    reason = build_reason(
+        REASON_EXTERNAL_PARTIAL_CLOSE,
+        "position partially closed on MT4 without Python CLOSE command",
+        ticket=ticket,
+        closed_volume=closed_volume,
+        remaining_volume=remaining_volume,
+    )
+    entry = TradeJournalEntry(
+        trade_id=str(uuid4()),
+        timestamp_utc=timestamp_utc or now_utc(),
+        account_id=instance.account_id,
+        symbol=instance.symbol,
+        magic=instance.magic,
+        event=TradeEvent.CLOSE.value,
+        command_id=f"external-partial-{uuid4()}",
+        ack_status=AckStatus.SUCCESS.value,
+        reason=reason,
+        side=side,
+        volume=closed_volume,
         ticket=ticket,
     )
     append_trade_journal_entry(paths, instance, entry)

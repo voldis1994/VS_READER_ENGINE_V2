@@ -149,11 +149,11 @@ class MT4Simulator:
     def __post_init__(self) -> None:
         self._ticket_counter = self.ticket_seed
 
+    def _all_position_payload(self) -> tuple[dict[str, object], ...]:
+        return tuple(self._open_positions.values())
+
     def _position_payload(self, instance: Instance) -> tuple[dict[str, object], ...]:
-        position = self._open_positions.get(instance.instance_key)
-        if position is None:
-            return ()
-        return (position,)
+        return self._all_position_payload()
 
     def _sync_position_from_ack(self, control: ControlCommand, ack_record: AckRecord) -> None:
         key = control.instance_key.as_tuple()

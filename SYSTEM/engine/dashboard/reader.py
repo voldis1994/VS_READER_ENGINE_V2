@@ -8,6 +8,7 @@ from engine.core.clock import now_utc
 from engine.core.instance import Instance
 from engine.core.lifecycle import discover_instances
 from engine.core.paths import SystemPaths
+from engine.core.monitoring_store import load_instance_metrics
 from engine.execution.ack_reader import build_ack_path, read_ack_record
 from engine.journal.decision_journal import build_decision_journal_path
 from engine.journal.error_journal import build_error_journal_path
@@ -35,6 +36,12 @@ class InstanceDashboardView:
     last_ack_command_id: str | None
     last_error_message: str | None
     last_error_type: str | None
+    instance_health: str | None = None
+    cycle_latency_ms: int | None = None
+    ack_latency_ms: int | None = None
+    data_freshness_ms: int | None = None
+    error_count: int | None = None
+    error_rate_per_min: float | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +115,8 @@ def read_instance_dashboard_view(paths: SystemPaths, instance: Instance) -> Inst
     if spread_state.record is not None:
         relative_spread = spread_state.record.relative_spread
 
+    monitoring = load_instance_metrics(paths, instance)
+
     return InstanceDashboardView(
         instance=instance,
         last_decision=decision_entry.decision if decision_entry is not None else instance_state.last_decision,
@@ -122,6 +131,12 @@ def read_instance_dashboard_view(paths: SystemPaths, instance: Instance) -> Inst
         last_ack_command_id=ack_command_id,
         last_error_message=error_entry.message if error_entry is not None else None,
         last_error_type=error_entry.error_type if error_entry is not None else None,
+        instance_health=monitoring.instance_health if monitoring is not None else None,
+        cycle_latency_ms=monitoring.cycle_latency_ms if monitoring is not None else None,
+        ack_latency_ms=monitoring.ack_latency_ms if monitoring is not None else None,
+        data_freshness_ms=monitoring.data_freshness_ms if monitoring is not None else None,
+        error_count=monitoring.error_count if monitoring is not None else None,
+        error_rate_per_min=monitoring.error_rate_per_min if monitoring is not None else None,
     )
 
 

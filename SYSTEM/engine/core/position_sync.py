@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.journal.trade_journal import log_external_position_close
+from engine.journal.trade_journal import log_external_partial_position_close, log_external_position_close
 from engine.protocol.models import StatusPositionSnapshot, StatusRecord
 from engine.state.instance_state import InstanceState
 
@@ -16,6 +16,7 @@ class PositionSyncResult:
     changed: bool
     external_close: bool
     trade_journal_logged: bool = False
+    external_partial_close: bool = False
 
 
 def find_status_position(
@@ -98,8 +99,25 @@ def reconcile_position_with_status(
             trade_journal_logged = True
         elif status_position.volume != instance_state.position_volume:
             if status_position.volume < instance_state.position_volume:
-                instance_state.reduce_position_volume(
-                    volume=instance_state.position_volume - status_position.volume
+                closed_volume = instance_state.position_volume - status_position.volume
+                instance_state.reduce_position_volume(volume=closed_volume)
+                log_external_partial_position_close(
+                    paths,
+                    instance,
+                    ticket=instance_state.open_ticket,
+                    side=instance_state.position_side,
+                    closed_volume=closed_volume,
+                    remaining_volume=status_position.volume,
+                    timestamp_utc=timestamp_utc,
+                )
+                external_close = False
+                trade_journal_logged = True
+                changed = True
+                return PositionSyncResult(
+                    changed=changed,
+                    external_close=external_close,
+                    trade_journal_logged=trade_journal_logged,
+                    external_partial_close=True,
                 )
             else:
                 instance_state.update_position(

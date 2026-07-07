@@ -95,6 +95,26 @@ def build_ack_timeout_interpretation(*, command_id: str) -> AckInterpretation:
     )
 
 
+def build_timeout_ack_record(
+    instance: Instance,
+    *,
+    command_id: str,
+    timestamp_utc: str,
+) -> AckRecord:
+    from engine.protocol.constants import PROTOCOL_SCHEMA_VERSION
+
+    return AckRecord(
+        schema_version=PROTOCOL_SCHEMA_VERSION,
+        timestamp_utc=timestamp_utc,
+        command_id=command_id,
+        account_id=instance.account_id,
+        symbol=instance.symbol,
+        magic=instance.magic,
+        status=AckStatus.FAILED.value,
+        error_message=AckStatus.TIMEOUT.value,
+    )
+
+
 def read_ack_for_command(
     paths: SystemPaths,
     instance: Instance,

@@ -225,12 +225,21 @@ def test_format_position_and_instance_view_render_expected_fields() -> None:
         last_ack_command_id="cmd-1",
         last_error_message=None,
         last_error_type=None,
+        instance_health="VALID",
+        cycle_latency_ms=1200,
+        ack_latency_ms=500,
+        data_freshness_ms=60000,
+        error_count=0,
+        error_rate_per_min=0.0,
     )
     assert format_position(view) == "SELL ticket=100 volume=0.20"
     rendered = format_instance_view(view)
     assert "decision=SELL" in rendered
     assert "spread=1.2500" in rendered
     assert "ack=SUCCESS [cmd-1]" in rendered
+    assert "health=VALID" in rendered
+    assert "cycle_latency_ms=1200" in rendered
+    assert "error_rate_per_min=0.00" in rendered
 
 
 def test_render_dashboard_returns_formatted_text() -> None:

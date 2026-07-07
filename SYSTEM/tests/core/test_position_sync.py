@@ -131,6 +131,100 @@ def test_reconcile_position_with_status_syncs_open_position_from_status(tmp_path
     assert state.position_volume == 0.2
 
 
+def test_reconcile_position_with_status_logs_partial_close(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path)
+    instance = _instance()
+    paths = SystemPaths(tmp_path)
+    _install_fixtures(paths, instance)
+    runtime = startup(root_path=tmp_path, config_path=config_path)
+    state = runtime.memory.get_or_create(instance).instance_state
+    state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.2,
+        entry_price=1.10150,
+        stop_loss=1.09880,
+        take_profit=1.11170,
+    )
+
+    result = reconcile_position_with_status(
+        runtime.paths,
+        instance,
+        state,
+        _status_with_position(ticket=555, volume=0.1),
+        timestamp_utc="2026-07-07T06:02:00.000Z",
+    )
+
+    assert result.external_partial_close is True
+    assert result.trade_journal_logged is True
+    assert state.open_ticket == 555
+    assert state.position_volume == 0.1
+
+
+def test_reconcile_position_does_not_clear_when_other_instance_position_present(
+    tmp_path: Path,
+) -> None:
+    config_path = _write_config(tmp_path)
+    instance = _instance()
+    paths = SystemPaths(tmp_path)
+    _install_fixtures(paths, instance)
+    runtime = startup(root_path=tmp_path, config_path=config_path)
+    state = runtime.memory.get_or_create(instance).instance_state
+    state.update_position(
+        open_ticket=555,
+        position_side=Side.BUY.value,
+        position_volume=0.1,
+        entry_price=1.10150,
+        stop_loss=1.09880,
+        take_profit=1.11170,
+    )
+
+    status = StatusRecord(
+        schema_version=PROTOCOL_SCHEMA_VERSION,
+        timestamp_utc="2026-07-07T06:00:00.000Z",
+        account_id="12345",
+        connected=True,
+        trade_allowed=True,
+        balance=10000.0,
+        equity=10020.5,
+        margin_free=9800.0,
+        ea_version="1.0.0",
+        open_positions=(
+            StatusPositionSnapshot(
+                symbol="EURUSD",
+                magic=100001,
+                ticket=555,
+                side=Side.BUY.value,
+                volume=0.1,
+                entry_price=1.10150,
+                stop_loss=1.09880,
+                take_profit=1.11170,
+            ),
+            StatusPositionSnapshot(
+                symbol="GBPUSD",
+                magic=100002,
+                ticket=888,
+                side=Side.SELL.value,
+                volume=0.05,
+                entry_price=1.25000,
+                stop_loss=1.25500,
+                take_profit=1.24000,
+            ),
+        ),
+    )
+
+    result = reconcile_position_with_status(
+        runtime.paths,
+        instance,
+        state,
+        status,
+        timestamp_utc="2026-07-07T06:02:00.000Z",
+    )
+
+    assert result.external_close is False
+    assert state.open_ticket == 555
+
+
 def test_status_round_trip_includes_open_positions() -> None:
     status = _status_with_position()
     payload = json.loads(write_status(status))

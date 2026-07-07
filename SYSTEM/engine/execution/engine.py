@@ -22,7 +22,7 @@ from engine.execution.ack_reader import (
 from engine.execution.command import OrderCommand, resolve_order_command
 from engine.execution.control_writer import publish_control
 from engine.journal.error_journal import log_error
-from engine.journal.trade_journal import TradeIntentParams, log_trade_ack, log_trade_intent
+from engine.journal.trade_journal import TradeIntentParams, log_trade_ack, log_trade_ack_timeout, log_trade_intent
 from engine.protocol.constants import AckStatus, ErrorType, OrderAction, Side, TradeEvent
 from engine.protocol.models import AckRecord, RuntimeConfig, TradeJournalEntry
 from engine.state.instance_state import InstanceState
@@ -285,12 +285,20 @@ def run_execution_engine(
             command_id=order_command.command_id,
             ack_status=AckStatus.TIMEOUT.value,
         )
+        archive_processed_control(paths, instance)
+        archive_processed_ack(paths, instance)
+        trade_entry = log_trade_ack_timeout(
+            paths,
+            instance,
+            command_id=order_command.command_id,
+            timestamp_utc=resolved_timestamp,
+        )
         return ExecutionResult(
             order_command=order_command,
             control_published=True,
             trade_intent_logged=True,
             ack_interpretation=build_ack_timeout_interpretation(command_id=order_command.command_id),
-            trade_journal_entry=None,
+            trade_journal_entry=trade_entry,
             state_updated=True,
         )
 

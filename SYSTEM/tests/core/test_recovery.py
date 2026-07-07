@@ -32,6 +32,7 @@ from engine.core.recovery import (
 from engine.core.retry import validate_control_command_retry
 from engine.execution.ack_reader import build_ack_path
 from engine.execution.command import OrderCommand
+from engine.core.history import read_archived_control_text
 from engine.execution.control_writer import build_control_path, publish_control
 from engine.journal.error_journal import build_error_journal_path
 from engine.normalizer.spread_model import update_spread_model
@@ -217,6 +218,13 @@ def test_recover_pending_ack_marks_timeout_when_ack_missing(tmp_path: Path) -> N
     error_entry = parse_error_journal_line(error_path.read_text(encoding="utf-8").strip())
     assert error_entry.error_type == ErrorType.EXECUTION.value
     assert error_entry.context["command_id"] == FIXED_COMMAND_ID
+    assert not build_control_path(runtime.paths, instance).exists()
+    archived_control = runtime.paths.instance_history_dir(
+        instance.account_id,
+        instance.symbol,
+        instance.magic,
+    ) / instance.control_filename()
+    assert archived_control.exists()
 
 
 def test_recover_pending_ack_applies_success_ack_and_position(tmp_path: Path) -> None:
@@ -287,7 +295,10 @@ def test_unconfirmed_control_is_not_republished_without_new_decision(tmp_path: P
     )
 
     recover_instance(runtime, instance, timestamp_utc="2026-07-07T06:00:00.000Z")
-    assert control_path.read_text(encoding="utf-8") == control_before
+    archived_control_text = read_archived_control_text(runtime.paths, instance)
+    assert archived_control_text is not None
+    assert archived_control_text == control_before
+    assert not control_path.exists()
 
     item.instance_state.update_execution(
         command_id=FIXED_COMMAND_ID,

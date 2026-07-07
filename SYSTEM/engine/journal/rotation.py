@@ -35,6 +35,37 @@ def _parse_journal_timestamp(line: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _journal_archive_name(journal_path: Path, archive_date: str) -> str:
+    stem = journal_path.stem
+    if stem.startswith("decision_"):
+        return f"decision_{archive_date}.jsonl"
+    if stem.startswith("trade_"):
+        return f"trade_{archive_date}.jsonl"
+    if stem.startswith("error_"):
+        return f"error_{archive_date}.jsonl"
+    return f"{stem}_{archive_date}.jsonl"
+
+
+def _resolve_history_dir_from_journal(
+    paths: SystemPaths,
+    account_id: str,
+    journal_path: Path,
+) -> Path:
+    stem = journal_path.stem
+    for prefix in ("decision_", "trade_", "error_"):
+        if stem.startswith(prefix):
+            suffix = stem.removeprefix(prefix)
+            if "_" not in suffix:
+                break
+            symbol, magic_text = suffix.rsplit("_", 1)
+            try:
+                magic = int(magic_text)
+            except ValueError:
+                break
+            return paths.instance_history_dir(account_id, symbol, magic)
+    return paths.history_dir / account_id / "journals"
+
+
 def rotate_journal_file(
     journal_path: Path,
     *,
@@ -54,6 +85,7 @@ def rotate_journal_file(
         timezone.utc
     )
     cutoff = current_time - timedelta(days=retention_days)
+    archive_date = current_time.strftime("%Y-%m-%d")
 
     lines = [line for line in atomic_read_text(journal_path).splitlines() if line.strip()]
     retained: list[str] = []
@@ -73,9 +105,13 @@ def rotate_journal_file(
         )
 
     history_dir.mkdir(parents=True, exist_ok=True)
-    archive_name = f"{journal_path.stem}_{current_time.strftime('%Y%m%dT%H%M%SZ')}.jsonl"
-    archive_path = history_dir / archive_name
-    archive_path.write_text("\n".join(archived) + "\n", encoding="utf-8")
+    archive_path = history_dir / _journal_archive_name(journal_path, archive_date)
+    existing = ""
+    if archive_path.exists():
+        existing = atomic_read_text(archive_path)
+        if existing and not existing.endswith("\n"):
+            existing = f"{existing}\n"
+    atomic_write_text(archive_path, f"{existing}{chr(10).join(archived)}\n")
 
     output = "\n".join(retained)
     if output:
@@ -98,12 +134,12 @@ def rotate_account_journals(
     current_utc: str | None = None,
 ) -> tuple[JournalRotationResult, ...]:
     journal_dir = paths.account_journal_dir(account_id)
-    history_dir = paths.history_dir / account_id / "journals"
     if not journal_dir.is_dir():
         return ()
 
     results: list[JournalRotationResult] = []
     for journal_path in sorted(journal_dir.glob("*.jsonl")):
+        history_dir = _resolve_history_dir_from_journal(paths, account_id, journal_path)
         results.append(
             rotate_journal_file(
                 journal_path,

@@ -85,6 +85,14 @@ def test_system_build_status_file_path_function_uses_status_template(status_sour
     assert "SYSTEM_BuildAccountDir" in body
 
 
+def test_system_status_exports_all_account_open_positions(status_source: str) -> None:
+    body = mql_source.function_body(status_source, "SYSTEM_BuildOpenPositionsJson")
+    assert "OrdersTotal" in body
+    assert "OrderSymbol()" in body
+    assert "OrderMagicNumber()" in body
+    assert "open_positions" in body
+
+
 def test_system_status_exports_open_positions_field(status_source: str) -> None:
     body = mql_source.function_body(status_source, "SYSTEM_FindOpenPositionForInstance")
     assert "OrderSelect" in body

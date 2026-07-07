@@ -28,7 +28,7 @@ def test_archive_processed_control_moves_file_to_history(tmp_path: Path) -> None
 
     assert archived is not None
     assert not control_path.exists()
-    assert archived.parent.name == "EURUSD_100001"
+    assert archived.name == "control_EURUSD_100001.json"
 
 
 def test_archive_processed_ack_moves_file_to_history(tmp_path: Path) -> None:

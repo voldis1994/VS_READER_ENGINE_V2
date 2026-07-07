@@ -28,6 +28,16 @@ def format_instance_view(view: InstanceDashboardView) -> str:
     if view.last_error_message is not None:
         error_type = view.last_error_type or "ERROR"
         error = f"{error_type}: {view.last_error_message}"
+    health = view.instance_health or "-"
+    cycle_latency = "-" if view.cycle_latency_ms is None else str(view.cycle_latency_ms)
+    ack_latency = "-" if view.ack_latency_ms is None else str(view.ack_latency_ms)
+    freshness = "-" if view.data_freshness_ms is None else str(view.data_freshness_ms)
+    error_count = "-" if view.error_count is None else str(view.error_count)
+    error_rate = (
+        "-"
+        if view.error_rate_per_min is None
+        else f"{view.error_rate_per_min:.2f}"
+    )
 
     return (
         f"{instance.account_id}/{instance.symbol}/{instance.magic} "
@@ -37,7 +47,13 @@ def format_instance_view(view: InstanceDashboardView) -> str:
         f"spread={spread} "
         f"position={format_position(view)} "
         f"ack={ack} "
-        f"error={error}"
+        f"error={error} "
+        f"health={health} "
+        f"cycle_latency_ms={cycle_latency} "
+        f"ack_latency_ms={ack_latency} "
+        f"data_freshness_ms={freshness} "
+        f"error_count={error_count} "
+        f"error_rate_per_min={error_rate}"
     )
 
 

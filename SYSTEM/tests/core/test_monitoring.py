@@ -156,11 +156,12 @@ def test_build_instance_metrics_sets_blocked_health_for_block_decision() -> None
             error_logged=False,
             decision_result=decision,
         ),
-        market_modified_utc="2026-07-07T06:00:00.000Z",
+        market_timestamp_utc="2026-07-07T06:00:00.000Z",
         measured_ack_latency_ms=None,
         ack_timeout_ms=5000,
         current_utc="2026-07-07T06:00:10.000Z",
         error_count=0,
+        error_rate_per_min=0.0,
     )
     assert resolve_instance_health(
         InstanceCycleResult(

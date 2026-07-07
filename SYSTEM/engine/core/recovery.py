@@ -6,6 +6,7 @@ from typing import Any, Iterable, MutableMapping
 from engine.core.atomic_io import atomic_read_text
 from engine.core.cache import invalidate_startup_cache
 from engine.core.clock import now_utc
+from engine.core.history import archive_processed_ack, archive_processed_control
 from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime, spread_snapshot_from_record
 from engine.core.paths import SystemPaths
@@ -221,12 +222,16 @@ def recover_pending_ack(
                 entry_price=entry_price,
             )
             interpret_ack(ack_record)
+            archive_processed_control(runtime.paths, instance)
+            archive_processed_ack(runtime.paths, instance)
             return AckRecoveryResult(recovered=True, timed_out=False, command_id=command_id)
 
     if (
         instance_state.last_command_id == command_id
         and instance_state.last_ack_status == AckStatus.TIMEOUT.value
     ):
+        archive_processed_control(runtime.paths, instance)
+        archive_processed_ack(runtime.paths, instance)
         return AckRecoveryResult(recovered=False, timed_out=False, command_id=command_id)
 
     resolved_timestamp = timestamp_utc or now_utc()
@@ -235,6 +240,8 @@ def recover_pending_ack(
         command_id=command_id,
         ack_status=AckStatus.TIMEOUT.value,
     )
+    archive_processed_control(runtime.paths, instance)
+    archive_processed_ack(runtime.paths, instance)
     return AckRecoveryResult(recovered=True, timed_out=True, command_id=command_id)
 
 

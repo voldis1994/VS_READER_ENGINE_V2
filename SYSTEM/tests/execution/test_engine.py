@@ -36,6 +36,7 @@ from engine.protocol.constants import (
     ErrorType,
     OrderAction,
     PROTOCOL_SCHEMA_VERSION,
+    REASON_ACK_TIMEOUT,
     RiskResult,
     Side,
     TradeEvent,
@@ -661,7 +662,8 @@ def test_run_execution_engine_ack_timeout_writes_error_journal_and_timeout_state
 
     assert result.ack_interpretation is not None
     assert result.ack_interpretation.is_timeout is True
-    assert result.trade_journal_entry is None
+    assert result.trade_journal_entry is not None
+    assert result.trade_journal_entry.ack_status == AckStatus.FAILED.value
     assert state.last_ack_status == AckStatus.TIMEOUT.value
 
     journal_text = build_error_journal_path(paths, instance).read_text(encoding="utf-8")
@@ -669,11 +671,19 @@ def test_run_execution_engine_ack_timeout_writes_error_journal_and_timeout_state
     assert entry.module == "core.timeout"
     assert entry.context["command_id"] == FIXED_COMMAND_ID
 
+    assert not build_control_path(paths, instance).exists()
+    archived_control = paths.instance_history_dir(
+        instance.account_id,
+        instance.symbol,
+        instance.magic,
+    ) / instance.control_filename()
+    assert archived_control.exists()
+
     intent_lines = build_trade_journal_path(paths, instance).read_text(encoding="utf-8").splitlines()
     assert len(intent_lines) == 1
     intent_entry = parse_trade_journal_line(intent_lines[0])
-    assert intent_entry.ack_status == AckStatus.REJECTED.value
-    assert intent_entry.reason.startswith(INTENT_REASON_PREFIX)
+    assert intent_entry.ack_status == AckStatus.FAILED.value
+    assert REASON_ACK_TIMEOUT in intent_entry.reason
 
 
 def test_run_execution_engine_none_action_publishes_control_without_ack_or_trade_journal(

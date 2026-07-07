@@ -28,6 +28,7 @@ from engine.protocol.constants import (
     Decision,
     ErrorType,
     OrderAction,
+    PROTOCOL_SCHEMA_VERSION,
     REASON_ACCOUNT_NOT_TRADEABLE,
     REASON_CYCLE_TIMEOUT,
     REASON_DATA_INVALID,
@@ -88,6 +89,7 @@ class InstanceCycleResult:
     trade_executed: bool = False
     ack_latency_ms: int | None = None
     performance_timings: CycleTimingSnapshot | None = None
+    market_data_utc: str | None = None
 
 
 def build_trade_management_config(
@@ -261,6 +263,32 @@ def build_account_block_reason(status: StatusRecord) -> str | None:
     if status.connected and status.trade_allowed:
         return None
     return build_reason(REASON_ACCOUNT_NOT_TRADEABLE, "account is not tradeable")
+
+
+def build_invalid_status_block_reason(errors: tuple[str, ...] | list[str]) -> str:
+    return build_reason(
+        REASON_DATA_INVALID,
+        "status validation failed",
+        errors=list(errors),
+    )
+
+
+def build_placeholder_status_record(
+    *,
+    account_id: str,
+    timestamp_utc: str,
+) -> StatusRecord:
+    return StatusRecord(
+        schema_version=PROTOCOL_SCHEMA_VERSION,
+        timestamp_utc=timestamp_utc,
+        account_id=account_id,
+        connected=False,
+        trade_allowed=False,
+        balance=0.0,
+        equity=0.0,
+        margin_free=0.0,
+        ea_version="unknown",
+    )
 
 
 def update_instance_instrument_state(
@@ -626,35 +654,8 @@ def run_instance_cycle(
             timestamp_utc=resolved_timestamp,
             completed=False,
             error_logged=True,
+            market_data_utc=market_data_utc,
         )
-
-    status_result = validate_status_for_cycle(loaded.status_raw)
-    if not status_result.is_valid or status_result.record is None:
-        _log_cycle_error(
-            runtime.paths,
-            instance,
-            message="status validation failed",
-            context={"errors": list(status_result.errors)},
-        )
-        return _cycle_result(
-            instance=instance,
-            timestamp_utc=resolved_timestamp,
-            completed=False,
-            error_logged=True,
-        )
-    status = status_result.record
-
-    reconcile_position_with_status(
-        runtime.paths,
-        instance,
-        instance_memory.instance_state,
-        status,
-        timestamp_utc=resolved_timestamp,
-    )
-
-    if timeout_guard.is_exceeded():
-        instance_memory.instance_state.save(runtime.paths)
-        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
 
     universe_result = validate_universe_for_cycle(loaded.universe_raw)
     if isinstance(universe_result, ValidationResult):
@@ -669,8 +670,79 @@ def run_instance_cycle(
             timestamp_utc=resolved_timestamp,
             completed=False,
             error_logged=True,
+            market_data_utc=market_data_utc,
         )
     universe = universe_result
+
+    status_result = validate_status_for_cycle(loaded.status_raw)
+    if not status_result.is_valid or status_result.record is None:
+        _log_cycle_error(
+            runtime.paths,
+            instance,
+            message="status validation failed",
+            context={"errors": list(status_result.errors)},
+        )
+        block_reason = build_invalid_status_block_reason(status_result.errors)
+        placeholder_status = build_placeholder_status_record(
+            account_id=instance.account_id,
+            timestamp_utc=resolved_timestamp,
+        )
+        update_instance_instrument_state(instance_memory, market_bars)
+        spread_snapshot = update_instance_spread_model(
+            instance_memory=instance_memory,
+            spread_models=runtime.spread_models,
+            sensor_reading=sensor_reading,
+            lookback_bars=runtime.config.analysis.lookback_bars,
+            timestamp_utc=resolved_timestamp,
+        )
+        decision_result = run_instance_decision_phase(
+            universe=universe,
+            market_bars=market_bars,
+            instance_memory=instance_memory,
+            relative_spread=spread_snapshot.relative_spread,
+            runtime=runtime,
+            block_reason=block_reason,
+        )
+        risk_engine_result = run_instance_risk_phase(
+            decision_result=decision_result,
+            instance_memory=instance_memory,
+            status=placeholder_status,
+            market_bars=market_bars,
+            runtime=runtime,
+            trade_params=trade_params,
+        )
+        log_decision(
+            runtime.paths,
+            instance,
+            decision_result,
+            risk_engine_result,
+            timestamp_utc=resolved_timestamp,
+        )
+        _finalize_cycle_state(
+            instance_memory=instance_memory,
+            runtime=runtime,
+            decision_result=decision_result,
+            timestamp_utc=resolved_timestamp,
+        )
+        return _cycle_result(
+            instance=instance,
+            timestamp_utc=resolved_timestamp,
+            completed=True,
+            error_logged=True,
+            decision_result=decision_result,
+            risk_engine_result=risk_engine_result,
+            decision_journal_logged=True,
+            market_data_utc=market_data_utc,
+        )
+    status = status_result.record
+
+    reconcile_position_with_status(
+        runtime.paths,
+        instance,
+        instance_memory.instance_state,
+        status,
+        timestamp_utc=resolved_timestamp,
+    )
 
     if timeout_guard.is_exceeded():
         instance_memory.instance_state.save(runtime.paths)
@@ -814,4 +886,5 @@ def run_instance_cycle(
         trade_executed=trade_executed,
         ack_latency_ms=ack_latency_ms,
         performance_timings=timings,
+        market_data_utc=market_data_utc,
     )

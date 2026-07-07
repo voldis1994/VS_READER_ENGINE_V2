@@ -42,6 +42,7 @@ from engine.protocol.constants import (
     OrderAction,
     PROTOCOL_SCHEMA_VERSION,
     REASON_ACCOUNT_NOT_TRADEABLE,
+    REASON_DATA_INVALID,
     RiskResult,
     Side,
 )
@@ -405,6 +406,24 @@ def test_run_instance_cycle_calculates_buy_and_sell_each_cycle(tmp_path: Path) -
     assert result.decision_result is not None
     assert result.decision_result.buy_candidate is not None
     assert result.decision_result.sell_candidate is not None
+
+
+def test_run_instance_cycle_invalid_status_produces_block_without_trade(tmp_path: Path) -> None:
+    runtime, instance = _startup_runtime(tmp_path)
+    status_path = runtime.paths.account_dir(instance.account_id) / instance.status_filename()
+    status_path.write_text("{not-valid-json", encoding="utf-8")
+
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
+    assert result.completed
+    assert result.decision_result is not None
+    assert result.decision_result.decision == Decision.BLOCK.value
+    assert REASON_DATA_INVALID in result.decision_result.reason
+    assert not result.trade_executed
 
 
 def test_run_instance_cycle_account_not_tradeable_produces_block_without_trade(tmp_path: Path) -> None:
