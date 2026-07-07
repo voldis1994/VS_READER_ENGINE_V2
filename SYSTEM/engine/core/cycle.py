@@ -460,6 +460,7 @@ def _abort_cycle_timeout(
     runtime: LiveRuntime,
     instance: Instance,
     timeout_guard: CycleTimeoutGuard,
+    instance_memory: InstanceMemory | None = None,
 ) -> InstanceCycleResult:
     log_error(
         runtime.paths,
@@ -473,6 +474,10 @@ def _abort_cycle_timeout(
             "cycle_max_duration_ms": timeout_guard.limit_ms,
         },
     )
+    if instance_memory is not None:
+        instance_memory.instance_state.save(runtime.paths)
+        if instance_memory.spread_state.record is not None:
+            instance_memory.spread_state.save(runtime.paths)
     timings = CycleTimingSnapshot(
         cycle_duration_ms=timeout_guard.elapsed_ms(),
         load_duration_ms=timeout_guard.elapsed_ms(),
@@ -597,7 +602,12 @@ def run_instance_cycle(
 
     load_duration_ms = monotonic_elapsed_ms(load_started)
     if timeout_guard.is_exceeded():
-        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
+        return _abort_cycle_timeout(
+            runtime=runtime,
+            instance=instance,
+            timeout_guard=timeout_guard,
+            instance_memory=instance_memory,
+        )
 
     market_result = validate_market_for_cycle(loaded.market_raw)
     if isinstance(market_result, ValidationResult):
@@ -614,6 +624,7 @@ def run_instance_cycle(
             error_logged=True,
         )
     market_bars = market_result
+    runtime.memory.update_market_history(instance, market_bars)
 
     sensor_result = validate_sensor_for_cycle(loaded.sensor_raw)
     if isinstance(sensor_result, ValidationResult):
@@ -746,7 +757,12 @@ def run_instance_cycle(
 
     if timeout_guard.is_exceeded():
         instance_memory.instance_state.save(runtime.paths)
-        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
+        return _abort_cycle_timeout(
+            runtime=runtime,
+            instance=instance,
+            timeout_guard=timeout_guard,
+            instance_memory=instance_memory,
+        )
 
     update_instance_instrument_state(instance_memory, market_bars)
     spread_snapshot = update_instance_spread_model(
@@ -803,7 +819,12 @@ def run_instance_cycle(
             decision_result=decision_result,
             timestamp_utc=resolved_timestamp,
         )
-        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
+        return _abort_cycle_timeout(
+            runtime=runtime,
+            instance=instance,
+            timeout_guard=timeout_guard,
+            instance_memory=instance_memory,
+        )
 
     resolved_trade_params = trade_params or build_risk_trade_params(runtime)
     management_result = run_instance_trade_management_phase(
@@ -823,7 +844,12 @@ def run_instance_cycle(
                 decision_result=decision_result,
                 timestamp_utc=resolved_timestamp,
             )
-            return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
+            return _abort_cycle_timeout(
+            runtime=runtime,
+            instance=instance,
+            timeout_guard=timeout_guard,
+            instance_memory=instance_memory,
+        )
         execution_started = time.monotonic()
         execution_result = run_execution_engine(
             paths=runtime.paths,

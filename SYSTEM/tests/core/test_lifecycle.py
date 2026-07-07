@@ -27,6 +27,7 @@ from engine.core.lifecycle import (
     shutdown,
     spread_snapshot_from_record,
     startup,
+    validate_config_root_path,
     validate_root_path,
 )
 from engine.core.paths import SystemPaths
@@ -206,6 +207,27 @@ def test_read_status_connected_reads_connected_flag(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert read_status_connected(paths, "12345") is False
+
+
+def test_validate_config_root_path_rejects_mismatched_root(tmp_path: Path) -> None:
+    root, config_path = _prepare_runtime_root(tmp_path)
+    config = load_system_config(config_path, system_paths=SystemPaths(root))
+    other_root = tmp_path / "other"
+    other_root.mkdir()
+    from dataclasses import replace
+
+    from engine.protocol.models import SystemSection
+
+    mismatched = replace(
+        config,
+        system=SystemSection(
+            name=config.system.name,
+            root_path=str(other_root),
+            timeframe=config.system.timeframe,
+        ),
+    )
+    with pytest.raises(ConfigurationError, match="system.root_path does not match"):
+        validate_config_root_path(mismatched, SystemPaths(root))
 
 
 def test_startup_with_valid_configuration(tmp_path: Path) -> None:

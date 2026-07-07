@@ -233,13 +233,11 @@ def test_format_metrics_message_includes_metric_fields() -> None:
 
 
 def test_log_instance_metrics_writes_metrics_to_system_log(tmp_path: Path) -> None:
-    paths = SystemPaths(tmp_path)
-    paths.ensure_directories()
-    logger = setup_system_logger(paths, level=LogLevel.INFO.value, format_name="standard")
+    runtime, instance = _startup_runtime(tmp_path)
     metrics = build_instance_metrics(
-        _instance(),
+        instance,
         InstanceCycleResult(
-            instance=_instance(),
+            instance=instance,
             timestamp_utc="2026-07-07T06:00:10.000Z",
             completed=True,
             error_logged=False,
@@ -251,10 +249,10 @@ def test_log_instance_metrics_writes_metrics_to_system_log(tmp_path: Path) -> No
         error_count=0,
         error_rate_per_min=0.0,
     )
-    log_instance_metrics(logger, metrics)
-    for handler in logger.handlers:
+    log_instance_metrics(runtime, metrics)
+    for handler in runtime.system_logger.handlers:
         handler.flush()
-    assert "metrics account=12345" in _read_system_log(paths)
+    assert "metrics account=12345" in _read_system_log(runtime.paths)
 
 
 def test_data_stale_generates_warning_alert(tmp_path: Path) -> None:

@@ -9,12 +9,12 @@ from typing import Any, MutableMapping
 from engine.core.alerts import dispatch_cycle_alerts, should_emit_account_not_tradeable_alert
 from engine.core.cycle import InstanceCycleResult
 from engine.core.instance import Instance
-from engine.core.lifecycle import LiveRuntime
+from engine.core.lifecycle import LiveRuntime, log_runtime_event
 from engine.core.logging_setup import log_event
 from engine.core.monitoring_store import PersistedMonitoringMetrics, persist_instance_metrics
 from engine.core.retry import RetryAlertContext, build_retry_policy
 from engine.loader.market_loader import load_market_data
-from engine.protocol.constants import LogLevel
+from engine.protocol.constants import LogLevel, PROTOCOL_SCHEMA_VERSION
 from engine.protocol.errors import SystemError
 
 MODULE_NAME = "core.monitoring"
@@ -213,10 +213,10 @@ def format_metrics_message(metrics: InstanceMonitoringMetrics) -> str:
     )
 
 
-def log_instance_metrics(logger, metrics: InstanceMonitoringMetrics) -> None:
+def log_instance_metrics(runtime: LiveRuntime, metrics: InstanceMonitoringMetrics) -> None:
     instance = metrics.instance
-    log_event(
-        logger,
+    log_runtime_event(
+        runtime,
         level=LogLevel.INFO.value,
         module=MODULE_NAME,
         message=format_metrics_message(metrics),
@@ -273,11 +273,15 @@ def observe_instance_cycle(
         error_count=error_count,
         error_rate_per_min=error_rate_per_min,
     )
-    log_instance_metrics(runtime.system_logger, metrics)
+    log_instance_metrics(runtime, metrics)
     persist_instance_metrics(
         runtime.paths,
         instance,
         PersistedMonitoringMetrics(
+            schema_version=PROTOCOL_SCHEMA_VERSION,
+            account_id=instance.account_id,
+            symbol=instance.symbol,
+            magic=instance.magic,
             timestamp_utc=cycle_result.timestamp_utc,
             cycle_latency_ms=metrics.cycle_latency_ms,
             ack_latency_ms=metrics.ack_latency_ms,

@@ -59,7 +59,7 @@ def read_last_journal_line(path: Path) -> str | None:
     if not path.exists():
         return None
     last_line: str | None = None
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in atomic_read_text(path).splitlines():
         stripped = line.strip()
         if stripped:
             last_line = stripped

@@ -10,6 +10,7 @@ from engine.protocol.constants import (
     FILENAME_ERROR_JOURNAL,
     FILENAME_INSTANCE_STATE,
     FILENAME_MARKET,
+    FILENAME_MONITORING_SNAPSHOT,
     FILENAME_SENSOR,
     FILENAME_SPREAD_STATE,
     FILENAME_STATUS,
@@ -73,6 +74,9 @@ class Instance:
 
     def spread_state_filename(self) -> str:
         return FILENAME_SPREAD_STATE.format(symbol=self.symbol, magic=self.magic)
+
+    def monitoring_snapshot_filename(self) -> str:
+        return FILENAME_MONITORING_SNAPSHOT.format(symbol=self.symbol, magic=self.magic)
 
     def status_filename(self) -> str:
         return FILENAME_STATUS.format(account_id=self.account_id)

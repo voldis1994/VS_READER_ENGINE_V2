@@ -15,6 +15,7 @@ from engine.core.monitoring_store import (
     persist_instance_metrics,
 )
 from engine.core.paths import SystemPaths
+from engine.protocol.constants import PROTOCOL_SCHEMA_VERSION
 
 
 def _instance() -> Instance:
@@ -36,6 +37,10 @@ def test_persist_and_load_instance_metrics_round_trip(tmp_path: Path) -> None:
     paths.ensure_directories()
     instance = _instance()
     metrics = PersistedMonitoringMetrics(
+        schema_version=PROTOCOL_SCHEMA_VERSION,
+        account_id=instance.account_id,
+        symbol=instance.symbol,
+        magic=instance.magic,
         timestamp_utc="2026-07-07T06:00:00.000Z",
         cycle_latency_ms=1500,
         ack_latency_ms=800,
@@ -49,9 +54,7 @@ def test_persist_and_load_instance_metrics_round_trip(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.cycle_latency_ms == 1500
     assert loaded.error_rate_per_min == 1.5
-    snapshot_path = paths.instance_cache_dir(
+    snapshot_path = paths.account_state_dir(
         instance.account_id,
-        instance.symbol,
-        instance.magic,
-    ) / "monitoring.json"
+    ) / instance.monitoring_snapshot_filename()
     assert json.loads(snapshot_path.read_text(encoding="utf-8"))["instance_health"] == "VALID"

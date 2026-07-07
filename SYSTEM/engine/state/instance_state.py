@@ -32,7 +32,7 @@ class InstanceState:
     position_bars_open: int = 0
     partial_close_applied: bool = False
     last_command_id: str = ""
-    last_ack_status: str = AckStatus.TIMEOUT.value
+    last_ack_status: str = ""
     instrument_digits: int = 0
     instrument_point: float = 0.0
     instrument_pip: float = 0.0

@@ -13,7 +13,7 @@ from engine.core.atomic_io import atomic_read_text
 from engine.core.cache import invalidate_startup_cache
 from engine.core.config import load_system_config
 from engine.core.instance import Instance, ensure_unique_instance_keys
-from engine.core.logging_setup import log_event, setup_system_logger
+from engine.core.logging_setup import log_event, setup_account_logger, setup_system_logger
 from engine.core.paths import SystemPaths
 from engine.normalizer.spread_model import SpreadModelSnapshot
 from engine.protocol.constants import FILENAME_STATUS
@@ -51,6 +51,17 @@ def validate_root_path(paths: SystemPaths) -> None:
         raise _config_error("system root path does not exist", path=str(paths.root))
     if not paths.root.is_dir():
         raise _config_error("system root path is not a directory", path=str(paths.root))
+
+
+def validate_config_root_path(config: SystemConfig, bootstrap_paths: SystemPaths) -> None:
+    configured_root = Path(config.system.root_path).expanduser().resolve()
+    bootstrap_root = bootstrap_paths.root
+    if configured_root != bootstrap_root:
+        raise _config_error(
+            "system.root_path does not match runtime root path",
+            configured_root=str(configured_root),
+            bootstrap_root=str(bootstrap_root),
+        )
 
 
 def parse_market_filename(filename: str) -> tuple[str, int] | None:
@@ -163,8 +174,59 @@ class LiveRuntime:
     memory: StateMemory
     system_logger: logging.Logger
     spread_models: dict[tuple[str, str, int], SpreadModelSnapshot] = field(default_factory=dict)
+    account_loggers: dict[str, logging.Logger] = field(default_factory=dict)
     shutdown_requested: bool = False
     allow_control_writes: bool = True
+
+
+def ensure_account_logger(runtime: LiveRuntime, account_id: str) -> logging.Logger:
+    existing = runtime.account_loggers.get(account_id)
+    if existing is not None:
+        return existing
+    logger = setup_account_logger(
+        runtime.paths,
+        account_id,
+        level=runtime.config.logging.level,
+        format_name=runtime.config.logging.format,
+    )
+    runtime.account_loggers[account_id] = logger
+    return logger
+
+
+def register_account_loggers(runtime: LiveRuntime, instances: Iterable[Instance]) -> None:
+    for instance in instances:
+        ensure_account_logger(runtime, instance.account_id)
+
+
+def log_runtime_event(
+    runtime: LiveRuntime,
+    *,
+    level: str,
+    module: str,
+    message: str,
+    account_id: str | None = None,
+    symbol: str | None = None,
+    magic: int | None = None,
+) -> None:
+    log_event(
+        runtime.system_logger,
+        level=level,
+        module=module,
+        message=message,
+        account_id=account_id,
+        symbol=symbol,
+        magic=magic,
+    )
+    if account_id:
+        log_event(
+            ensure_account_logger(runtime, account_id),
+            level=level,
+            module=module,
+            message=message,
+            account_id=account_id,
+            symbol=symbol,
+            magic=magic,
+        )
 
 
 def startup(
@@ -177,6 +239,7 @@ def startup(
 
     resolved_config_path = Path(config_path) if config_path is not None else bootstrap_paths.config_path
     config = load_system_config(resolved_config_path, system_paths=bootstrap_paths)
+    validate_config_root_path(config, bootstrap_paths)
     paths = build_system_paths(config)
     validate_root_path(paths)
     paths.ensure_directories()
@@ -197,6 +260,15 @@ def startup(
     spread_models = build_spread_models(memory)
     removed_hashes = invalidate_runtime_cache(paths, instances)
 
+    runtime = LiveRuntime(
+        paths=paths,
+        config=config,
+        memory=memory,
+        system_logger=system_logger,
+        spread_models=spread_models,
+    )
+    register_account_loggers(runtime, instances)
+
     log_event(
         system_logger,
         level="INFO",
@@ -205,13 +277,6 @@ def startup(
             f"startup complete instances={len(instances)} "
             f"cache_hashes_removed={removed_hashes}"
         ),
-    )
-    runtime = LiveRuntime(
-        paths=paths,
-        config=config,
-        memory=memory,
-        system_logger=system_logger,
-        spread_models=spread_models,
     )
     from engine.core.recovery import run_runtime_recovery
 
@@ -235,6 +300,11 @@ def close_runtime_logging(runtime: LiveRuntime) -> None:
     for handler in list(runtime.system_logger.handlers):
         handler.close()
         runtime.system_logger.removeHandler(handler)
+    for logger in runtime.account_loggers.values():
+        for handler in list(logger.handlers):
+            handler.close()
+            logger.removeHandler(handler)
+    runtime.account_loggers.clear()
 
 
 def shutdown(runtime: LiveRuntime) -> int:

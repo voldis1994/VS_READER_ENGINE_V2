@@ -205,6 +205,7 @@ FILENAME_TRADE_JOURNAL: Final[str] = "trade_{symbol}_{magic}.jsonl"
 FILENAME_ERROR_JOURNAL: Final[str] = "error_{symbol}_{magic}.jsonl"
 FILENAME_INSTANCE_STATE: Final[str] = "instance_{symbol}_{magic}.json"
 FILENAME_SPREAD_STATE: Final[str] = "spread_{symbol}_{magic}.json"
+FILENAME_MONITORING_SNAPSHOT: Final[str] = "monitoring_{symbol}_{magic}.json"
 FILENAME_UNIVERSE: Final[str] = "universe.json"
 
 MARKET_CSV_COLUMNS: Final[tuple[str, ...]] = (

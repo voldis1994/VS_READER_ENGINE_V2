@@ -7,11 +7,10 @@ from pathlib import Path
 from engine.core.atomic_io import atomic_read_text, atomic_write_text
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
+from engine.protocol.constants import PROTOCOL_SCHEMA_VERSION
 from engine.protocol.errors import DataIOError
 
 MODULE_NAME = "core.monitoring_store"
-
-MONITORING_FILENAME = "monitoring.json"
 
 
 def _data_io_error(message: str, **context: object) -> DataIOError:
@@ -20,6 +19,10 @@ def _data_io_error(message: str, **context: object) -> DataIOError:
 
 @dataclass(frozen=True)
 class PersistedMonitoringMetrics:
+    schema_version: str
+    account_id: str
+    symbol: str
+    magic: int
     timestamp_utc: str
     cycle_latency_ms: int | None
     ack_latency_ms: int | None
@@ -30,11 +33,7 @@ class PersistedMonitoringMetrics:
 
 
 def build_monitoring_snapshot_path(paths: SystemPaths, instance: Instance) -> Path:
-    return paths.instance_cache_dir(
-        instance.account_id,
-        instance.symbol,
-        instance.magic,
-    ) / MONITORING_FILENAME
+    return paths.account_state_dir(instance.account_id) / instance.monitoring_snapshot_filename()
 
 
 def persist_instance_metrics(
@@ -69,6 +68,10 @@ def load_instance_metrics(
             path=str(snapshot_path),
         )
     return PersistedMonitoringMetrics(
+        schema_version=str(payload.get("schema_version", PROTOCOL_SCHEMA_VERSION)),
+        account_id=str(payload.get("account_id", instance.account_id)),
+        symbol=str(payload.get("symbol", instance.symbol)),
+        magic=int(payload.get("magic", instance.magic)),
         timestamp_utc=str(payload.get("timestamp_utc", "")),
         cycle_latency_ms=payload.get("cycle_latency_ms"),
         ack_latency_ms=payload.get("ack_latency_ms"),

@@ -874,6 +874,20 @@ Ceļš: `data/universe/`
 | `margin_free` | number | jā | Brīvā marža |
 | `last_error` | string | nē | Pēdējā EA kļūda |
 | `ea_version` | string | jā | EA versija |
+| `open_positions` | array | nē | Atvērtās pozīcijas visā kontā; katrs elements satur `symbol`, `magic`, `ticket`, `side`, `volume`, `entry_price`, `stop_loss`, `take_profit` |
+
+### 19.2.1. `open_positions[]` elements
+
+| Lauks | Tips | Obligāts | Apraksts |
+|-------|------|----------|----------|
+| `symbol` | string | jā | Simbols |
+| `magic` | integer | jā | Magic |
+| `ticket` | integer | jā | MT4 ordera tickets |
+| `side` | string | jā | BUY vai SELL |
+| `volume` | number | jā | Atvērtais apjoms |
+| `entry_price` | number | jā | Ieejas cena |
+| `stop_loss` | number | jā | Stop loss |
+| `take_profit` | number | jā | Take profit |
 
 ### 19.3. `universe.json`
 
@@ -938,6 +952,22 @@ Universe JSON nedrīkst saturēt laukus: `signal`, `direction`, `trade`, `buy`, 
 | `position_side` | string | nē | BUY vai SELL |
 | `position_volume` | number | nē | Pozīcijas tilpums |
 | `last_cycle_utc` | string | jā | Pēdējā cikla laiks |
+
+### 19.6.1. `monitoring_{symbol}_{magic}.json`
+
+| Lauks | Tips | Obligāts | Apraksts |
+|-------|------|----------|----------|
+| `schema_version` | string | jā | Protokola versija |
+| `account_id` | string | jā | Konta numurs |
+| `symbol` | string | jā | Simbols |
+| `magic` | integer | jā | Magic |
+| `timestamp_utc` | string | jā | Metriku laiks |
+| `cycle_latency_ms` | integer | nē | Cikla latentums |
+| `ack_latency_ms` | integer | nē | ACK latentums |
+| `data_freshness_ms` | integer | nē | Datu vecums |
+| `error_count` | integer | jā | Kumulatīvais kļūdu skaits |
+| `error_rate_per_min` | number | jā | Kļūdu likme minūtē |
+| `instance_health` | string | jā | VALID, BLOCKED vai ERROR |
 
 ### 19.7. `spread_{symbol}_{magic}.json`
 

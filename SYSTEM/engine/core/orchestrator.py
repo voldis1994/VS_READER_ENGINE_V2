@@ -11,6 +11,8 @@ from engine.core.lifecycle import (
     LiveRuntime,
     discover_instances,
     load_runtime_memory,
+    log_runtime_event,
+    register_account_loggers,
     spread_snapshot_from_record,
 )
 from engine.core.logging_setup import log_event
@@ -77,6 +79,7 @@ def register_runtime_instances(
                 item.spread_state.record
             )
         registered.append(instance)
+    register_account_loggers(runtime, registered)
     return tuple(registered)
 
 
@@ -140,8 +143,8 @@ def run_runtime_cycles(
         target_instances = register_runtime_instances(runtime, instances)
 
     resolved_timestamp = timestamp_utc or now_utc()
-    log_event(
-        runtime.system_logger,
+    log_runtime_event(
+        runtime,
         level="INFO",
         module=MODULE_NAME,
         message=f"runtime cycle begin instances={len(target_instances)}",
@@ -181,8 +184,8 @@ def run_runtime_cycles(
 
     completed_count = sum(1 for result in results if result.completed)
     failed_count = len(results) - completed_count
-    log_event(
-        runtime.system_logger,
+    log_runtime_event(
+        runtime,
         level="INFO",
         module=MODULE_NAME,
         message=(

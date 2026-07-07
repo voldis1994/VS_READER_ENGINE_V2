@@ -41,6 +41,8 @@ Katram kontam: `data/clients/{account_id}/`
 
 `schema_version, timestamp_utc, account_id, connected, trade_allowed, balance, equity, margin_free, ea_version`
 
+Opcionāls lauks `open_positions[]` satur visas konta atvērtās pozīcijas (sk. spec §19.2.1).
+
 ### Universe JSON
 
 Atļauts tikai konteksts (`session`, `market_regime`, `news_window_active`, u.c.). Aizliegti trade signālu lauki: `signal`, `direction`, `trade`, `buy`, `sell`, `action`.
@@ -73,6 +75,7 @@ Katrai instancei: `data/clients/{account_id}/state/`
 |-------|--------|
 | `instance_{symbol}_{magic}.json` | Pēdējais lēmums, pozīcija, instrumenta parametri |
 | `spread_{symbol}_{magic}.json` | Spread modeļa statistika |
+| `monitoring_{symbol}_{magic}.json` | Pēdējās monitoring metrikas dashboard attēlošanai |
 
 ## 7. Journal faili (JSONL)
 
@@ -85,6 +88,8 @@ Katrai instancei: `data/clients/{account_id}/journal/`
 | `error_{symbol}_{magic}.jsonl` | Validācijas, IO, execution un risk kļūdas |
 
 Journal ir append-only. Katram ierakstam ir `timestamp_utc` un instance identifikatori.
+
+Trade journal intent rindas pirms ACK izmanto `ack_status=REJECTED` kā pagaidu stāvokli; pēc ACK ieraksts tiek atjaunināts ar faktisko `SUCCESS`, `FAILED` vai `TIMEOUT` interpretāciju.
 
 ## 8. Lēmumu un riska protokols
 
