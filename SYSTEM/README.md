@@ -30,6 +30,8 @@ powershell -ExecutionPolicy Bypass -File scripts\install_windows.ps1 `
 Papildu instrukcijas: `scripts/LEJUPIELADE.txt`
 
 ### Manuāli
+
+```bash
 cd C:\SYSTEM
 python -m venv .venv
 .venv\Scripts\activate
