@@ -59,3 +59,62 @@ def test_state_memory_release_on_deactivation() -> None:
     memory.release(instance)
 
     assert memory.get(instance) is None
+
+
+def test_state_memory_caches_last_analysis_and_decision() -> None:
+    from engine.analysis.context import AnalysisContext
+    from engine.decision.engine import DecisionResult
+    from engine.decision.buy import BuyCandidate
+    from engine.decision.sell import SellCandidate
+    from engine.protocol.constants import Decision, Side
+
+    memory = StateMemory(lookback_bars=5)
+    instance = Instance(account_id="12345", symbol="EURUSD", magic=100001)
+    analysis_context = AnalysisContext(
+        session="LONDON",
+        regime="trending",
+        news_active=False,
+        context_quality=0.9,
+        trade_environment="FAVORABLE",
+        spread_filter_passed=True,
+    )
+    buy_candidate = BuyCandidate(
+        valid=True,
+        invalid_reason=None,
+        entry_price=1.1,
+        stop_loss=1.09,
+        take_profit=1.12,
+        component_scores={},
+        buy_score=1.0,
+    )
+    sell_candidate = SellCandidate(
+        valid=False,
+        invalid_reason="invalid",
+        entry_price=0.0,
+        stop_loss=0.0,
+        take_profit=0.0,
+        component_scores={},
+        sell_score=0.0,
+    )
+    decision_result = DecisionResult(
+        decision_id="decision-test-1",
+        decision=Decision.BUY.value,
+        reason="BUY: test",
+        preferred_side=Side.BUY.value,
+        buy_candidate=buy_candidate,
+        sell_candidate=sell_candidate,
+        buy_score=1.0,
+        sell_score=0.0,
+        analysis_context=analysis_context,
+    )
+
+    memory.update_analysis_decision(
+        instance,
+        analysis_context=analysis_context,
+        decision_result=decision_result,
+    )
+
+    item = memory.get(instance)
+    assert item is not None
+    assert item.last_analysis_context is analysis_context
+    assert item.last_decision_result is decision_result

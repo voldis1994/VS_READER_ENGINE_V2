@@ -2059,7 +2059,7 @@ Pārvaldīt atvērtās pozīcijas pēc izpildes bez jauna virziena lēmuma, ja k
 
 ### 57.3. Moduļa vieta
 
-Trade Management loģika atrodas `engine/risk/rules.py` un `engine/decision/engine.py` sadarbībā, bet izpilde notiek caur Execution Engine ar MODIFY vai CLOSE komandām.
+Trade Management loģika atrodas `engine/risk/trade_management.py` un tiek izsaukta no `engine/core/cycle.py` trade management fāzē. Izpilde notiek caur Execution Engine ar MODIFY vai CLOSE komandām.
 
 ### 57.4. Noteikums
 
@@ -3162,9 +3162,10 @@ Paplašinājumi notiek, nemainot:
 ### 100.10. Fāze J — Trade Management
 
 61. Nākamajos ciklos Analysis un Decision darbojas ar atvērtu pozīciju
-62. `risk/rules.py` novērtē breakeven un trailing nosacījumus
-63. Ja nepieciešams, `command.py` veido MODIFY ar jaunu SL
-64. Control un ACK cikls atkārtojas
+62. `risk/trade_management.py` novērtē breakeven, trailing, partial close un time stop nosacījumus
+63. `core/cycle.py` izsauc trade management fāzi un nodod rezultātu Execution Engine
+64. Ja nepieciešams, `command.py` veido MODIFY vai CLOSE ar atbilstošo apjomu
+65. Control un ACK cikls atkārtojas
 65. `trade_journal.py` pieraksta MODIFY notikumu
 
 ### 100.11. Fāze K — Position Close

@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
+from engine.analysis.context import AnalysisContext
 from engine.core.instance import Instance
+from engine.decision.engine import DecisionResult
 from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.state.instance_state import InstanceState
 from engine.state.spread_state import SpreadState
@@ -15,6 +17,8 @@ class InstanceMemory:
     instance_state: InstanceState
     spread_state: SpreadState
     market_history: list[NormalizedMarketBar] = field(default_factory=list)
+    last_analysis_context: AnalysisContext | None = None
+    last_decision_result: DecisionResult | None = None
 
 
 class StateMemory:
@@ -48,6 +52,18 @@ class StateMemory:
         memory.market_history.extend(bars)
         if len(memory.market_history) > self._lookback_bars:
             memory.market_history = memory.market_history[-self._lookback_bars :]
+        return memory
+
+    def update_analysis_decision(
+        self,
+        instance: Instance,
+        *,
+        analysis_context: AnalysisContext,
+        decision_result: DecisionResult,
+    ) -> InstanceMemory:
+        memory = self.get_or_create(instance)
+        memory.last_analysis_context = analysis_context
+        memory.last_decision_result = decision_result
         return memory
 
     def release(self, instance: Instance) -> None:

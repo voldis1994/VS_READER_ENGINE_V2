@@ -525,6 +525,11 @@ def _finalize_cycle_state(
     decision_result: DecisionResult,
     timestamp_utc: str,
 ) -> None:
+    runtime.memory.update_analysis_decision(
+        instance_memory.instance,
+        analysis_context=decision_result.analysis_context,
+        decision_result=decision_result,
+    )
     instance_memory.instance_state.update_cycle(
         decision=decision_result.decision,
         reason=decision_result.reason,
