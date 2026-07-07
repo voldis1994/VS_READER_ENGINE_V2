@@ -9,6 +9,7 @@ from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
 from engine.loader.market_loader import build_market_file_path, load_market_data
 from engine.protocol.errors import DataIOError
+from tests.loader.conftest import assert_path_suffix, assert_same_path
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -26,15 +27,16 @@ def _prepare_market_file(tmp_path: Path, fixture_name: str) -> tuple[SystemPaths
 def test_build_market_file_path() -> None:
     paths = SystemPaths(Path("/tmp/system"))
     instance = Instance(account_id="12345", symbol="EURUSD", magic=100001)
-    assert str(build_market_file_path(paths, instance)).endswith(
-        "data/clients/12345/market_EURUSD_100001.csv"
+    assert_path_suffix(
+        build_market_file_path(paths, instance),
+        "data/clients/12345/market_EURUSD_100001.csv",
     )
 
 
 def test_load_market_data_valid_csv_row_count(tmp_path: Path) -> None:
     paths, instance, file_path = _prepare_market_file(tmp_path, "market_valid.csv")
     data = load_market_data(paths, instance)
-    assert data.file_path == file_path
+    assert_same_path(data.file_path, file_path)
     assert data.row_count == 2
     assert "time_utc,open,high,low,close" in data.raw_text
     assert data.modified_utc.endswith("Z")

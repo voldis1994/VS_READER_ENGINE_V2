@@ -8,6 +8,7 @@ import pytest
 from engine.core.paths import SystemPaths
 from engine.loader.universe_loader import build_universe_file_path, load_universe_data
 from engine.protocol.errors import DataIOError
+from tests.loader.conftest import assert_path_suffix, assert_same_path
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -16,13 +17,13 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 def test_build_universe_file_path_account_variant() -> None:
     paths = SystemPaths(Path("/tmp/system"))
     file_path = build_universe_file_path(paths, "12345", use_global_universe=False)
-    assert str(file_path).endswith("data/clients/12345/universe.json")
+    assert_path_suffix(file_path, "data/clients/12345/universe.json")
 
 
 def test_build_universe_file_path_global_variant() -> None:
     paths = SystemPaths(Path("/tmp/system"))
     file_path = build_universe_file_path(paths, "12345", use_global_universe=True)
-    assert str(file_path).endswith("data/universe/universe.json")
+    assert_path_suffix(file_path, "data/universe/universe.json")
 
 
 def test_load_universe_data_account_variant_loads(tmp_path: Path) -> None:
@@ -32,7 +33,7 @@ def test_load_universe_data_account_variant_loads(tmp_path: Path) -> None:
     shutil.copyfile(FIXTURES_DIR / "universe_valid.json", file_path)
 
     data = load_universe_data(paths, "12345", use_global_universe=False)
-    assert data.file_path == file_path
+    assert_same_path(data.file_path, file_path)
     assert data.modified_utc.endswith("Z")
     assert '"session": "LONDON"' in data.raw_text
     assert len(data.content_hash) == 64
@@ -45,7 +46,7 @@ def test_load_universe_data_global_variant_loads(tmp_path: Path) -> None:
     shutil.copyfile(FIXTURES_DIR / "universe_valid.json", file_path)
 
     data = load_universe_data(paths, "12345", use_global_universe=True)
-    assert data.file_path == file_path
+    assert_same_path(data.file_path, file_path)
     assert '"market_regime": "trending"' in data.raw_text
 
 

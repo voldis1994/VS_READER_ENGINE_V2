@@ -8,6 +8,7 @@ import pytest
 from engine.core.paths import SystemPaths
 from engine.loader.status_loader import build_status_file_path, load_status_data
 from engine.protocol.errors import DataIOError
+from tests.loader.conftest import assert_path_suffix, assert_same_path
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -24,13 +25,13 @@ def _prepare_status_file(tmp_path: Path, account_id: str = "12345") -> tuple[Sys
 def test_build_status_file_path() -> None:
     paths = SystemPaths(Path("/tmp/system"))
     path = build_status_file_path(paths, "12345")
-    assert str(path).endswith("data/clients/12345/status_12345.json")
+    assert_path_suffix(path, "data/clients/12345/status_12345.json")
 
 
 def test_load_status_data_valid_json_loads(tmp_path: Path) -> None:
     paths, file_path = _prepare_status_file(tmp_path)
     data = load_status_data(paths, "12345")
-    assert data.file_path == file_path
+    assert_same_path(data.file_path, file_path)
     assert data.modified_utc.endswith("Z")
     assert '"account_id": "12345"' in data.raw_text
     assert len(data.content_hash) == 64
