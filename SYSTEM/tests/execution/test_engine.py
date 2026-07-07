@@ -14,6 +14,7 @@ from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.decision.sell import SellCandidate
 from engine.execution.ack_reader import build_ack_path
 from engine.execution.command import OrderCommand
+from engine.core.history import read_archived_control_text
 from engine.execution.control_writer import build_control_path
 from engine.execution.engine import (
     ExecutionResult,
@@ -529,7 +530,9 @@ def test_run_execution_engine_buy_allow_success_updates_control_state_and_trade_
     assert result.trade_journal_entry.ack_status == AckStatus.SUCCESS.value
     assert result.trade_journal_entry.ticket == 555
 
-    control = parse_control(build_control_path(paths, instance).read_text(encoding="utf-8"))
+    archived_control_text = read_archived_control_text(paths, instance)
+    assert archived_control_text is not None
+    control = parse_control(archived_control_text)
     assert control.command_id == FIXED_COMMAND_ID
     assert control.action == OrderAction.OPEN.value
     assert control.side == Side.BUY.value

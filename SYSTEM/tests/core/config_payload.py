@@ -66,6 +66,13 @@ def valid_system_config_payload() -> dict[str, Any]:
             },
         },
         "journal": {"retention_days": 30},
+        "trade_management": {
+            "enabled": True,
+            "breakeven_progress_ratio": 0.5,
+            "partial_close_progress_ratio": 0.75,
+            "partial_close_volume_ratio": 0.5,
+            "time_stop_max_bars": 120,
+        },
         "dashboard": {"refresh_interval_ms": 1000},
         "logging": {"level": "INFO", "format": "standard"},
     }

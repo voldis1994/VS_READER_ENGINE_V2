@@ -27,6 +27,7 @@ from engine.protocol.constants import AckStatus, OrderAction, ValidationStatus
 from engine.protocol.errors import SystemError
 from engine.protocol.models import ControlCommand, StatusRecord
 from engine.protocol.parser import parse_control, parse_sensor_csv
+from engine.core.position_sync import reconcile_position_with_status
 from engine.state.instance_state import InstanceState
 from engine.state.spread_state import SpreadState
 from engine.validator.market_validator import validate_market_csv
@@ -251,7 +252,20 @@ def load_status_for_recovery(runtime: LiveRuntime, instance: Instance) -> Status
 def sync_position_with_status(
     instance_state: InstanceState,
     status: StatusRecord,
+    instance: Instance,
+    *,
+    paths: SystemPaths | None = None,
+    timestamp_utc: str | None = None,
 ) -> bool:
+    if paths is not None and timestamp_utc is not None:
+        return reconcile_position_with_status(
+            paths,
+            instance,
+            instance_state,
+            status,
+            timestamp_utc=timestamp_utc,
+        ).changed
+
     changed = False
     if status.balance > 0 and instance_state.day_start_balance is None:
         instance_state.update_risk_metrics(day_start_balance=status.balance)
@@ -320,6 +334,7 @@ def recover_instance(
     timestamp_utc: str | None = None,
     cache: MutableMapping[str, Any] | None = None,
 ) -> InstanceRecoveryResult:
+    resolved_timestamp = timestamp_utc or now_utc()
     state_reloaded = reload_instance_state_from_disk(runtime, instance)
     cache_reconciled = reconcile_instance_cache(runtime, instance)
 
@@ -339,7 +354,13 @@ def recover_instance(
     status = load_status_for_recovery(runtime, instance)
     position_synced = False
     if status is not None:
-        position_synced = sync_position_with_status(item.instance_state, status)
+        position_synced = sync_position_with_status(
+            item.instance_state,
+            status,
+            instance,
+            paths=runtime.paths,
+            timestamp_utc=resolved_timestamp,
+        )
 
     spread_recovered = (
         recover_spread_model_from_sensor(

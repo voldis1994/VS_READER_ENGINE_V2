@@ -12,6 +12,7 @@ from engine.execution.ack_reader import build_ack_path
 from engine.execution.control_writer import build_control_path
 from engine.protocol.constants import (
     AckStatus,
+    OrderAction,
     PROTOCOL_SCHEMA_VERSION,
 )
 from engine.protocol.models import AckRecord, ControlCommand
@@ -106,9 +107,10 @@ def build_status_json(
     account_id: str,
     scenario: StatusScenario = "tradeable",
     timestamp_utc: str = "2026-07-07T06:02:00.000Z",
+    open_positions: tuple[dict[str, object], ...] = (),
 ) -> str:
     trade_allowed = scenario == "tradeable"
-    payload = {
+    payload: dict[str, object] = {
         "schema_version": PROTOCOL_SCHEMA_VERSION,
         "timestamp_utc": timestamp_utc,
         "account_id": account_id,
@@ -119,6 +121,8 @@ def build_status_json(
         "margin_free": 9800.0,
         "ea_version": "1.0.0",
     }
+    if open_positions:
+        payload["open_positions"] = list(open_positions)
     return json.dumps(payload)
 
 
@@ -140,9 +144,56 @@ class MT4Simulator:
     paths: SystemPaths
     ticket_seed: int = 10_000
     _ticket_counter: int = field(init=False)
+    _open_positions: dict[tuple[str, str, int], dict[str, object]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._ticket_counter = self.ticket_seed
+
+    def _position_payload(self, instance: Instance) -> tuple[dict[str, object], ...]:
+        position = self._open_positions.get(instance.instance_key)
+        if position is None:
+            return ()
+        return (position,)
+
+    def _sync_position_from_ack(self, control: ControlCommand, ack_record: AckRecord) -> None:
+        key = control.instance_key.as_tuple()
+        if ack_record.status != AckStatus.SUCCESS.value:
+            return
+        if control.action == OrderAction.OPEN.value:
+            if ack_record.ticket is None or control.side is None or control.volume is None:
+                return
+            self._open_positions[key] = {
+                "symbol": control.symbol,
+                "magic": control.magic,
+                "ticket": ack_record.ticket,
+                "side": control.side,
+                "volume": control.volume,
+                "entry_price": control.stop_loss,
+                "stop_loss": control.stop_loss,
+                "take_profit": control.take_profit,
+            }
+        elif control.action == OrderAction.MODIFY.value:
+            position = self._open_positions.get(key)
+            if position is None:
+                return
+            if control.stop_loss is not None:
+                position["stop_loss"] = control.stop_loss
+            if control.take_profit is not None:
+                position["take_profit"] = control.take_profit
+        elif control.action == OrderAction.CLOSE.value:
+            self._open_positions.pop(key, None)
+
+    def refresh_status(self, instance: Instance, *, timestamp_utc: str) -> Path:
+        status_path = self.paths.account_dir(instance.account_id) / instance.status_filename()
+        atomic_write_text(
+            status_path,
+            build_status_json(
+                account_id=instance.account_id,
+                timestamp_utc=timestamp_utc,
+                open_positions=self._position_payload(instance),
+            ),
+        )
+        return status_path
 
     def next_ticket(self) -> int:
         self._ticket_counter += 1
@@ -188,6 +239,7 @@ class MT4Simulator:
                 account_id=instance.account_id,
                 scenario=status_scenario,
                 timestamp_utc=timestamp_utc,
+                open_positions=self._position_payload(instance),
             ),
         )
         atomic_write_text(universe_path, build_universe_json(timestamp_utc=timestamp_utc))
@@ -264,6 +316,8 @@ class MT4Simulator:
             timestamp_utc=timestamp_utc,
         )
         self.write_ack(instance, ack_record)
+        self._sync_position_from_ack(control, ack_record)
+        self.refresh_status(instance, timestamp_utc=timestamp_utc)
         return ack_record
 
     def install_auto_ack_hook(self, monkeypatch) -> None:

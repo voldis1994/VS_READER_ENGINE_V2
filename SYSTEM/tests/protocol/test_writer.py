@@ -32,6 +32,7 @@ from engine.protocol.models import (
     SystemConfig,
     SystemSection,
     TradeJournalEntry,
+    TradeManagementSettings,
     UniverseRecord,
 )
 from engine.protocol.parser import (
@@ -136,6 +137,13 @@ def _system_config() -> SystemConfig:
             ),
         ),
         journal=JournalConfig(retention_days=30),
+        trade_management=TradeManagementSettings(
+            enabled=True,
+            breakeven_progress_ratio=0.5,
+            partial_close_progress_ratio=0.75,
+            partial_close_volume_ratio=0.5,
+            time_stop_max_bars=120,
+        ),
         dashboard=DashboardConfig(refresh_interval_ms=1000),
         logging=LoggingConfig(level="INFO", format="standard"),
     )

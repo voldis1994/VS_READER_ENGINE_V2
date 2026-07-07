@@ -12,6 +12,7 @@ from engine.core.lifecycle import LiveRuntime
 from engine.core.paths import SystemPaths
 from engine.core.cycle import should_execute_trade
 from engine.execution.ack_reader import build_ack_path
+from engine.core.history import read_archived_control_text
 from engine.execution.control_writer import build_control_path
 from engine.execution.engine import ExecutionResult, run_execution_engine
 from engine.journal.error_journal import build_error_journal_path
@@ -187,9 +188,9 @@ def test_control_file_is_created(tmp_path, monkeypatch: pytest.MonkeyPatch) -> N
     assert result.execution_result.control_published is True
     assert result.execution_result.order_command.action == OrderAction.OPEN.value
 
-    control_path = build_control_path(runtime.paths, instance)
-    assert control_path.exists()
-    control = parse_control(control_path.read_text(encoding="utf-8"))
+    archived_control_text = read_archived_control_text(runtime.paths, instance)
+    assert archived_control_text is not None
+    control = parse_control(archived_control_text)
     assert control.command_id == FIXED_COMMAND_ID
     assert control.action == OrderAction.OPEN.value
     assert control.side == result.decision_result.preferred_side

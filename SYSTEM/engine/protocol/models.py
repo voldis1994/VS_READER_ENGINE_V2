@@ -478,6 +478,69 @@ class AnalysisConfig:
 
 
 @dataclass(frozen=True)
+class TradeManagementSettings:
+    enabled: bool
+    breakeven_progress_ratio: float
+    partial_close_progress_ratio: float
+    partial_close_volume_ratio: float
+    time_stop_max_bars: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "enabled",
+            _require_bool(self.enabled, "trade_management.enabled"),
+        )
+        breakeven_progress_ratio = _require_number(
+            self.breakeven_progress_ratio,
+            "trade_management.breakeven_progress_ratio",
+        )
+        if not 0 < breakeven_progress_ratio <= 1:
+            raise ValidationError(
+                "trade_management.breakeven_progress_ratio must be in (0, 1]",
+                module="protocol.models",
+                context={"value": breakeven_progress_ratio},
+            )
+        object.__setattr__(self, "breakeven_progress_ratio", breakeven_progress_ratio)
+        partial_close_progress_ratio = _require_number(
+            self.partial_close_progress_ratio,
+            "trade_management.partial_close_progress_ratio",
+        )
+        if not 0 < partial_close_progress_ratio <= 1:
+            raise ValidationError(
+                "trade_management.partial_close_progress_ratio must be in (0, 1]",
+                module="protocol.models",
+                context={"value": partial_close_progress_ratio},
+            )
+        object.__setattr__(self, "partial_close_progress_ratio", partial_close_progress_ratio)
+        partial_close_volume_ratio = _require_number(
+            self.partial_close_volume_ratio,
+            "trade_management.partial_close_volume_ratio",
+        )
+        if not 0 < partial_close_volume_ratio < 1:
+            raise ValidationError(
+                "trade_management.partial_close_volume_ratio must be in (0, 1)",
+                module="protocol.models",
+                context={"value": partial_close_volume_ratio},
+            )
+        object.__setattr__(self, "partial_close_volume_ratio", partial_close_volume_ratio)
+        object.__setattr__(
+            self,
+            "time_stop_max_bars",
+            _require_int(self.time_stop_max_bars, "trade_management.time_stop_max_bars", minimum=1),
+        )
+
+    def to_dict(self) -> dict[str, int | float | bool]:
+        return {
+            "enabled": self.enabled,
+            "breakeven_progress_ratio": self.breakeven_progress_ratio,
+            "partial_close_progress_ratio": self.partial_close_progress_ratio,
+            "partial_close_volume_ratio": self.partial_close_volume_ratio,
+            "time_stop_max_bars": self.time_stop_max_bars,
+        }
+
+
+@dataclass(frozen=True)
 class JournalConfig:
     retention_days: int
 
@@ -538,6 +601,7 @@ class SystemConfig:
     risk: RiskConfig
     analysis: AnalysisConfig
     journal: JournalConfig
+    trade_management: TradeManagementSettings
     dashboard: DashboardConfig
     logging: LoggingConfig
 
@@ -574,9 +638,77 @@ class SystemConfig:
             "risk": self.risk.to_dict(),
             "analysis": self.analysis.to_dict(),
             "journal": self.journal.to_dict(),
+            "trade_management": self.trade_management.to_dict(),
             "dashboard": self.dashboard.to_dict(),
             "logging": self.logging.to_dict(),
         }
+
+
+@dataclass(frozen=True)
+class StatusPositionSnapshot:
+    symbol: str
+    magic: int
+    ticket: int
+    side: str
+    volume: float
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "symbol", _validate_symbol(self.symbol))
+        object.__setattr__(self, "magic", _validate_magic(self.magic))
+        object.__setattr__(self, "ticket", _require_int(self.ticket, "open_positions.ticket", minimum=0))
+        side = _require_non_empty_string(self.side, "open_positions.side")
+        if side not in {Side.BUY.value, Side.SELL.value}:
+            raise ValidationError(
+                "open_positions.side must be BUY or SELL",
+                module="protocol.models",
+                context={"value": side},
+            )
+        object.__setattr__(self, "side", side)
+        volume = _require_number(self.volume, "open_positions.volume")
+        if volume <= 0:
+            raise ValidationError(
+                "open_positions.volume must be > 0",
+                module="protocol.models",
+                context={"value": volume},
+            )
+        object.__setattr__(self, "volume", volume)
+        if self.entry_price is not None:
+            object.__setattr__(
+                self,
+                "entry_price",
+                _require_number(self.entry_price, "open_positions.entry_price"),
+            )
+        if self.stop_loss is not None:
+            object.__setattr__(
+                self,
+                "stop_loss",
+                _require_number(self.stop_loss, "open_positions.stop_loss"),
+            )
+        if self.take_profit is not None:
+            object.__setattr__(
+                self,
+                "take_profit",
+                _require_number(self.take_profit, "open_positions.take_profit"),
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "symbol": self.symbol,
+            "magic": self.magic,
+            "ticket": self.ticket,
+            "side": self.side,
+            "volume": self.volume,
+        }
+        if self.entry_price is not None:
+            data["entry_price"] = self.entry_price
+        if self.stop_loss is not None:
+            data["stop_loss"] = self.stop_loss
+        if self.take_profit is not None:
+            data["take_profit"] = self.take_profit
+        return data
 
 
 @dataclass(frozen=True)
@@ -591,6 +723,7 @@ class StatusRecord:
     margin_free: float
     ea_version: str
     last_error: str | None = None
+    open_positions: tuple[StatusPositionSnapshot, ...] = ()
 
     def __post_init__(self) -> None:
         schema_version = _require_non_empty_string(self.schema_version, "schema_version")
@@ -611,6 +744,19 @@ class StatusRecord:
         object.__setattr__(self, "ea_version", _require_non_empty_string(self.ea_version, "ea_version"))
         if self.last_error is not None:
             object.__setattr__(self, "last_error", _require_non_empty_string(self.last_error, "last_error"))
+        if not isinstance(self.open_positions, tuple):
+            raise ValidationError(
+                "open_positions must be a tuple",
+                module="protocol.models",
+                context={"value_type": type(self.open_positions).__name__},
+            )
+        for position in self.open_positions:
+            if not isinstance(position, StatusPositionSnapshot):
+                raise ValidationError(
+                    "open_positions entries must be StatusPositionSnapshot",
+                    module="protocol.models",
+                    context={"value_type": type(position).__name__},
+                )
 
     def to_dict(self) -> dict[str, Any]:
         data = {
@@ -626,6 +772,8 @@ class StatusRecord:
         }
         if self.last_error is not None:
             data["last_error"] = self.last_error
+        if self.open_positions:
+            data["open_positions"] = [position.to_dict() for position in self.open_positions]
         return data
 
 

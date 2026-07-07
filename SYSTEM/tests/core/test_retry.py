@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from engine.core.retry import (
+    RetryAlertContext,
     RetryPolicy,
     build_retry_policy,
     max_retry_attempts,
@@ -97,3 +100,31 @@ def test_validate_control_command_retry_allows_new_command_id() -> None:
         previous_command_id="cmd-1",
         command_id="cmd-2",
     )
+
+
+def test_run_with_retry_emits_retry_alert_before_final_failure(tmp_path: Path) -> None:
+    from engine.core.logging_setup import setup_system_logger
+    from engine.core.paths import SystemPaths
+
+    policy = RetryPolicy(retry_max=1, retry_delay_ms=0)
+    paths = SystemPaths(tmp_path)
+    paths.ensure_directories()
+    logger = setup_system_logger(paths, level="INFO", format_name="standard")
+    log_path = paths.logs_dir / sorted(paths.logs_dir.glob("system_*.log"))[0]
+
+    def _failing_operation() -> None:
+        raise OSError("temporary failure")
+
+    with pytest.raises(OSError, match="temporary failure"):
+        run_with_retry(
+            policy,
+            _failing_operation,
+            sleep_fn=lambda _: None,
+            alert_context=RetryAlertContext(
+                logger=logger,
+                operation="atomic read",
+            ),
+        )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "alert code=RETRY" in log_text

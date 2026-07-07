@@ -38,7 +38,10 @@ def build_status_json(
     equity: float,
     margin_free: float,
     timestamp_utc: str,
+    symbol: str = "EURUSD",
+    magic: int = 100001,
     last_error: str | None = None,
+    open_positions: list[dict[str, object]] | None = None,
 ) -> str:
     payload: dict[str, object] = {
         "account_id": account_id,
@@ -53,6 +56,8 @@ def build_status_json(
     }
     if last_error:
         payload["last_error"] = last_error
+    if open_positions:
+        payload["open_positions"] = open_positions
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 

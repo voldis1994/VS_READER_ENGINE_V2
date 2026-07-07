@@ -66,9 +66,12 @@ SYSTEM/
 
 ## Palaišana
 
-Live engine un dashboard tiks dokumentēti pilnā implementācijā (posms P62 un P66).
+```bash
+python run_live.py
+python dashboard.py
+```
 
-Pirms LIVE palaišanas jābūt pabeigtam visam `docs/IMPLEMENTATION_PLAN.md` līdz posmam P74. P75 nostiprina audita High labojumus pēc P74.
+Pilna LIVE palaišana prasa pabeigtu `docs/IMPLEMENTATION_PLAN.md` līdz P74 un P75 audit fix posmu.
 
 ## Instance modelis
 

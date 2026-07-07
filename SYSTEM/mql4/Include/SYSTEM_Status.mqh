@@ -43,6 +43,72 @@ string SYSTEM_BuildStatusFilePath(const string account_id)
    return SYSTEM_JoinPath(SYSTEM_BuildAccountDir(account_id), filename);
 }
 
+bool SYSTEM_FindOpenPositionForInstance(
+   const string symbol,
+   const int magic,
+   int &ticket,
+   string &side,
+   double &volume,
+   double &entry_price,
+   double &stop_loss,
+   double &take_profit
+)
+{
+   ticket = 0;
+   side = "";
+   volume = 0.0;
+   entry_price = 0.0;
+   stop_loss = 0.0;
+   take_profit = 0.0;
+
+   for(int index = OrdersTotal() - 1; index >= 0; index--)
+   {
+      if(!OrderSelect(index, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderSymbol() != symbol)
+         continue;
+      if(OrderMagicNumber() != magic)
+         continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+         continue;
+
+      ticket = OrderTicket();
+      side = (OrderType() == OP_BUY) ? "BUY" : "SELL";
+      volume = OrderLots();
+      entry_price = OrderOpenPrice();
+      stop_loss = OrderStopLoss();
+      take_profit = OrderTakeProfit();
+      return true;
+   }
+   return false;
+}
+
+string SYSTEM_BuildOpenPositionsJson(const string symbol, const int magic)
+{
+   int ticket = 0;
+   string side = "";
+   double volume = 0.0;
+   double entry_price = 0.0;
+   double stop_loss = 0.0;
+   double take_profit = 0.0;
+   if(!SYSTEM_FindOpenPositionForInstance(symbol, magic, ticket, side, volume, entry_price, stop_loss, take_profit))
+      return "";
+
+   string json = ",\n  \"open_positions\": [\n";
+   json = json + "    {\n";
+   json = json + "      \"symbol\": \"" + SYSTEM_EscapeJsonString(symbol) + "\",\n";
+   json = json + "      \"magic\": " + IntegerToString(magic) + ",\n";
+   json = json + "      \"ticket\": " + IntegerToString(ticket) + ",\n";
+   json = json + "      \"side\": \"" + SYSTEM_EscapeJsonString(side) + "\",\n";
+   json = json + "      \"volume\": " + SYSTEM_FormatJsonNumber(volume, 2) + ",\n";
+   json = json + "      \"entry_price\": " + SYSTEM_FormatJsonNumber(entry_price, Digits) + ",\n";
+   json = json + "      \"stop_loss\": " + SYSTEM_FormatJsonNumber(stop_loss, Digits) + ",\n";
+   json = json + "      \"take_profit\": " + SYSTEM_FormatJsonNumber(take_profit, Digits) + "\n";
+   json = json + "    }\n";
+   json = json + "  ]";
+   return json;
+}
+
 string SYSTEM_BuildStatusJson(
    const string account_id,
    const bool connected,
@@ -50,7 +116,9 @@ string SYSTEM_BuildStatusJson(
    const double balance,
    const double equity,
    const double margin_free,
-   const string last_error
+   const string last_error,
+   const string symbol,
+   const int magic
 )
 {
    string timestamp_utc = SYSTEM_FormatTimeUtc(TimeCurrent());
@@ -66,11 +134,12 @@ string SYSTEM_BuildStatusJson(
    json = json + "  \"trade_allowed\": " + SYSTEM_FormatJsonBoolean(trade_allowed);
    if(StringLen(last_error) > 0)
       json = json + ",\n  \"last_error\": \"" + SYSTEM_EscapeJsonString(last_error) + "\"";
+   json = json + SYSTEM_BuildOpenPositionsJson(symbol, magic);
    json = json + "\n}\n";
    return json;
 }
 
-string SYSTEM_BuildStatusJsonFromAccount(const string account_id)
+string SYSTEM_BuildStatusJsonFromAccount(const string account_id, const string symbol, const int magic)
 {
    return SYSTEM_BuildStatusJson(
       account_id,
@@ -79,11 +148,13 @@ string SYSTEM_BuildStatusJsonFromAccount(const string account_id)
       AccountBalance(),
       AccountEquity(),
       AccountFreeMargin(),
-      ""
+      "",
+      symbol,
+      magic
    );
 }
 
-bool SYSTEM_ExportStatus(const string account_id)
+bool SYSTEM_ExportStatus(const string account_id, const string symbol, const int magic)
 {
    if(StringLen(account_id) == 0)
       return false;
@@ -91,11 +162,16 @@ bool SYSTEM_ExportStatus(const string account_id)
       return false;
 
    string path = SYSTEM_BuildStatusFilePath(account_id);
-   string payload = SYSTEM_BuildStatusJsonFromAccount(account_id);
+   string payload = SYSTEM_BuildStatusJsonFromAccount(account_id, symbol, magic);
    return SYSTEM_AtomicWriteText(path, payload);
 }
 
-bool SYSTEM_ExportStatusWithLastError(const string account_id, const string last_error)
+bool SYSTEM_ExportStatusWithLastError(
+   const string account_id,
+   const string symbol,
+   const int magic,
+   const string last_error
+)
 {
    if(StringLen(account_id) == 0)
       return false;
@@ -110,7 +186,9 @@ bool SYSTEM_ExportStatusWithLastError(const string account_id, const string last
       AccountBalance(),
       AccountEquity(),
       AccountFreeMargin(),
-      last_error
+      last_error,
+      symbol,
+      magic
    );
    return SYSTEM_AtomicWriteText(path, payload);
 }

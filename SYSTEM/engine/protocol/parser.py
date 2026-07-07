@@ -33,9 +33,11 @@ from engine.protocol.models import (
     SensorReading,
     SpreadStateRecord,
     StatusRecord,
+    StatusPositionSnapshot,
     SystemConfig,
     SystemSection,
     TradeJournalEntry,
+    TradeManagementSettings,
     UniverseRecord,
 )
 
@@ -370,6 +372,14 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             field="logging",
             value_type=type(logging_data).__name__,
         )
+    trade_management_data = _require_key(payload, "trade_management", "system_config")
+    if not isinstance(trade_management_data, dict):
+        raise _protocol_error(
+            "trade_management section must be an object",
+            label="system_config",
+            field="trade_management",
+            value_type=type(trade_management_data).__name__,
+        )
 
     if not isinstance(instances_data, list):
         raise _protocol_error(
@@ -496,6 +506,31 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             "system_config",
             retention_days=_require_key(journal_data, "retention_days", "system_config"),
         ),
+        trade_management=_build_model(
+            TradeManagementSettings,
+            "system_config",
+            enabled=_require_key(trade_management_data, "enabled", "system_config"),
+            breakeven_progress_ratio=_require_key(
+                trade_management_data,
+                "breakeven_progress_ratio",
+                "system_config",
+            ),
+            partial_close_progress_ratio=_require_key(
+                trade_management_data,
+                "partial_close_progress_ratio",
+                "system_config",
+            ),
+            partial_close_volume_ratio=_require_key(
+                trade_management_data,
+                "partial_close_volume_ratio",
+                "system_config",
+            ),
+            time_stop_max_bars=_require_key(
+                trade_management_data,
+                "time_stop_max_bars",
+                "system_config",
+            ),
+        ),
         dashboard=_build_model(
             DashboardConfig,
             "system_config",
@@ -512,6 +547,42 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             format=_require_key(logging_data, "format", "system_config"),
         ),
     )
+
+
+def _parse_status_positions(payload: dict[str, Any]) -> tuple[StatusPositionSnapshot, ...]:
+    raw_positions = payload.get("open_positions")
+    if raw_positions is None:
+        return ()
+    if not isinstance(raw_positions, list):
+        raise _protocol_error(
+            "open_positions must be a list",
+            label="status",
+            value_type=type(raw_positions).__name__,
+        )
+    positions: list[StatusPositionSnapshot] = []
+    for index, item in enumerate(raw_positions):
+        if not isinstance(item, dict):
+            raise _protocol_error(
+                "open_positions entry must be an object",
+                label="status",
+                index=index,
+                value_type=type(item).__name__,
+            )
+        kwargs: dict[str, Any] = {
+            "symbol": _require_key(item, "symbol", "status"),
+            "magic": _require_key(item, "magic", "status"),
+            "ticket": _require_key(item, "ticket", "status"),
+            "side": _require_key(item, "side", "status"),
+            "volume": _require_key(item, "volume", "status"),
+        }
+        if "entry_price" in item and item["entry_price"] is not None:
+            kwargs["entry_price"] = item["entry_price"]
+        if "stop_loss" in item and item["stop_loss"] is not None:
+            kwargs["stop_loss"] = item["stop_loss"]
+        if "take_profit" in item and item["take_profit"] is not None:
+            kwargs["take_profit"] = item["take_profit"]
+        positions.append(_build_model(StatusPositionSnapshot, "status", **kwargs))
+    return tuple(positions)
 
 
 def parse_status(data: dict[str, Any] | str) -> StatusRecord:
@@ -531,6 +602,7 @@ def parse_status(data: dict[str, Any] | str) -> StatusRecord:
         "equity": _require_key(payload, "equity", "status"),
         "margin_free": _require_key(payload, "margin_free", "status"),
         "ea_version": _require_key(payload, "ea_version", "status"),
+        "open_positions": _parse_status_positions(payload),
     }
     if "last_error" in payload and payload["last_error"] is not None:
         kwargs["last_error"] = payload["last_error"]

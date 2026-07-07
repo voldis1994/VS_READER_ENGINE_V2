@@ -86,7 +86,10 @@ Augstāki slāņi neapiet validāciju un analīzi. Dashboard neimportē `analysi
 |---------|------|
 | `core/lifecycle.py` | Startup/shutdown, memory, spread modeli |
 | `core/orchestrator.py` | Multi-instance cikli |
-| `core/recovery.py` | Startup recovery, late ACK, vieglā state sync cikla sākumā |
+| `core/recovery.py` | Startup recovery, late ACK, pozīciju sinhronizācija ar status |
+| `core/position_sync.py` | Status `open_positions` ↔ instance state, ārējā aizvēršana |
+| `core/history.py` | Control/ACK/market arhivēšana uz `data/history/` |
+| `journal/rotation.py` | Journal rotācija pēc `journal.retention_days` |
 | `core/monitoring.py` | Instance monitoring |
 | `core/alerts.py` | Alerti |
 | `core/performance.py` | Cikla ilguma metrikas |

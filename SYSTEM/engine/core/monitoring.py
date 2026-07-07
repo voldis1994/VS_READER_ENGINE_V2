@@ -9,6 +9,7 @@ from engine.core.cycle import InstanceCycleResult
 from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.logging_setup import log_event
+from engine.core.retry import RetryAlertContext, build_retry_policy
 from engine.loader.market_loader import load_market_data
 from engine.protocol.constants import LogLevel
 from engine.protocol.errors import SystemError
@@ -168,11 +169,19 @@ def observe_instance_cycle(
         record_cycle_error(monitoring_state, instance)
 
     market_modified_utc: str | None = None
+    retry_policy = build_retry_policy(runtime.config.runtime)
+    retry_alert_context = RetryAlertContext(
+        logger=runtime.system_logger,
+        instance=instance,
+        operation="monitoring market load",
+    )
     try:
         market_modified_utc = load_market_data(
             runtime.paths,
             instance,
             cache=cache,
+            retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
         ).modified_utc
     except SystemError:
         market_modified_utc = None

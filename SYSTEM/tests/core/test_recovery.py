@@ -332,7 +332,7 @@ def test_sync_position_with_status_updates_risk_metrics() -> None:
         margin_free=9800.0,
         ea_version="1.0.0",
     )
-    assert sync_position_with_status(state, status) is True
+    assert sync_position_with_status(state, status, _instance()) is True
     assert state.day_start_balance == pytest.approx(10000.0)
     assert state.peak_equity == pytest.approx(10050.0)
 

@@ -41,6 +41,7 @@ class InstanceDashboardView:
 class DashboardSnapshot:
     generated_at_utc: str
     instances: tuple[InstanceDashboardView, ...]
+    monitoring_lines: tuple[str, ...] = ()
 
     @property
     def instance_count(self) -> int:
@@ -135,6 +136,7 @@ def load_dashboard_snapshot(
     return DashboardSnapshot(
         generated_at_utc=timestamp_utc or now_utc(),
         instances=views,
+        monitoring_lines=read_monitoring_log_lines(paths),
     )
 
 
@@ -156,3 +158,13 @@ def read_system_log_tail(paths: SystemPaths, *, max_lines: int = 5) -> tuple[str
 
     lines = atomic_read_text(log_files[0]).splitlines()
     return tuple(line for line in lines[-max_lines:] if line.strip())
+
+
+def read_monitoring_log_lines(paths: SystemPaths, *, max_lines: int = 10) -> tuple[str, ...]:
+    lines = read_system_log_tail(paths, max_lines=max_lines * 3)
+    monitoring_lines = [
+        line
+        for line in lines
+        if " metrics " in line or " alert code=" in line or "runtime monitoring summary" in line
+    ]
+    return tuple(monitoring_lines[-max_lines:])

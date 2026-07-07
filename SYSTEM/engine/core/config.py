@@ -22,6 +22,7 @@ _TOP_LEVEL_FIELDS = frozenset(
         "risk",
         "analysis",
         "journal",
+        "trade_management",
         "dashboard",
         "logging",
     }
@@ -74,6 +75,15 @@ _ANALYSIS_WEIGHT_FIELDS = frozenset(
     }
 )
 _JOURNAL_FIELDS = frozenset({"retention_days"})
+_TRADE_MANAGEMENT_FIELDS = frozenset(
+    {
+        "enabled",
+        "breakeven_progress_ratio",
+        "partial_close_progress_ratio",
+        "partial_close_volume_ratio",
+        "time_stop_max_bars",
+    }
+)
 _DASHBOARD_FIELDS = frozenset({"refresh_interval_ms"})
 _LOGGING_FIELDS = frozenset({"level", "format"})
 
@@ -165,6 +175,11 @@ def _assert_schema_shape(payload: dict[str, Any]) -> None:
         "analysis.weights",
     )
     _assert_exact_fields(_ensure_mapping(payload["journal"], "journal"), _JOURNAL_FIELDS, "journal")
+    _assert_exact_fields(
+        _ensure_mapping(payload["trade_management"], "trade_management"),
+        _TRADE_MANAGEMENT_FIELDS,
+        "trade_management",
+    )
     _assert_exact_fields(
         _ensure_mapping(payload["dashboard"], "dashboard"),
         _DASHBOARD_FIELDS,

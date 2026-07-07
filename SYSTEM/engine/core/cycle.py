@@ -11,7 +11,8 @@ from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.paths import SystemPaths
 from engine.core.performance import CycleTimingSnapshot, monotonic_elapsed_ms
-from engine.core.retry import RetryPolicy, build_retry_policy
+from engine.core.position_sync import reconcile_position_with_status
+from engine.core.retry import RetryAlertContext, RetryPolicy, build_retry_policy
 from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.execution.engine import ExecutionResult, run_execution_engine
 from engine.journal.decision_journal import log_decision
@@ -34,7 +35,7 @@ from engine.protocol.constants import (
     Side,
 )
 from engine.protocol.errors import DataIOError, SystemError
-from engine.protocol.models import SensorReading, StatusRecord, UniverseRecord
+from engine.protocol.models import SensorReading, StatusRecord, TradeManagementSettings, UniverseRecord
 from engine.protocol.parser import parse_sensor_csv, parse_universe
 from engine.reason import build_reason
 from engine.risk.engine import RiskEngineResult, RiskEngineTradeParams, run_risk_engine
@@ -53,10 +54,17 @@ from engine.validator.universe_validator import validate_universe_json
 
 MODULE_NAME = "core.cycle"
 
-DEFAULT_BREAKEVEN_PROGRESS_RATIO = 0.5
-DEFAULT_PARTIAL_CLOSE_PROGRESS_RATIO = 0.75
-DEFAULT_PARTIAL_CLOSE_VOLUME_RATIO = 0.5
-DEFAULT_TIME_STOP_MAX_BARS = 120
+
+@dataclass(frozen=True)
+class CycleTimeoutGuard:
+    cycle_started: float
+    limit_ms: int
+
+    def elapsed_ms(self) -> int:
+        return monotonic_elapsed_ms(self.cycle_started)
+
+    def is_exceeded(self) -> bool:
+        return self.elapsed_ms() > self.limit_ms
 
 
 @dataclass(frozen=True)
@@ -86,13 +94,14 @@ def build_trade_management_config(
     trade_params: RiskEngineTradeParams,
     *,
     trailing_buffer: float,
+    settings: TradeManagementSettings,
 ) -> TradeManagementConfig:
     return TradeManagementConfig(
-        breakeven_progress_ratio=DEFAULT_BREAKEVEN_PROGRESS_RATIO,
+        breakeven_progress_ratio=settings.breakeven_progress_ratio,
         trailing_buffer=trailing_buffer,
-        partial_close_progress_ratio=DEFAULT_PARTIAL_CLOSE_PROGRESS_RATIO,
-        partial_close_volume_ratio=DEFAULT_PARTIAL_CLOSE_VOLUME_RATIO,
-        time_stop_max_bars=DEFAULT_TIME_STOP_MAX_BARS,
+        partial_close_progress_ratio=settings.partial_close_progress_ratio,
+        partial_close_volume_ratio=settings.partial_close_volume_ratio,
+        time_stop_max_bars=settings.time_stop_max_bars,
         volume_step=trade_params.volume_step,
     )
 
@@ -127,6 +136,8 @@ def run_instance_trade_management_phase(
     runtime: LiveRuntime,
     trade_params: RiskEngineTradeParams | None = None,
 ) -> TradeManagementResult:
+    if not runtime.config.trade_management.enabled:
+        return TradeManagementResult(action=OrderAction.NONE.value, reason="")
     resolved_trade_params = trade_params or build_risk_trade_params(runtime)
     if instance_memory.instance_state.open_ticket is not None:
         instance_memory.instance_state.increment_position_bars()
@@ -144,6 +155,7 @@ def run_instance_trade_management_phase(
         config=build_trade_management_config(
             resolved_trade_params,
             trailing_buffer=runtime.config.analysis.stop_loss_buffer,
+            settings=runtime.config.trade_management,
         ),
         digits=digits,
     )
@@ -173,6 +185,7 @@ def load_instance_cycle_data(
     use_global_universe: bool | None = None,
     cache: MutableMapping[str, Any] | None = None,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> InstanceCycleData:
     resolved_use_global = (
         resolve_use_global_universe(paths)
@@ -180,13 +193,26 @@ def load_instance_cycle_data(
         else use_global_universe
     )
     return InstanceCycleData(
-        market_raw=load_market_data(paths, instance, cache=cache, retry_policy=retry_policy),
-        sensor_raw=load_sensor_data(paths, instance, cache=cache, retry_policy=retry_policy),
+        market_raw=load_market_data(
+            paths,
+            instance,
+            cache=cache,
+            retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
+        ),
+        sensor_raw=load_sensor_data(
+            paths,
+            instance,
+            cache=cache,
+            retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
+        ),
         status_raw=load_status_data(
             paths,
             instance.account_id,
             cache=cache,
             retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
         ),
         universe_raw=load_universe_data(
             paths,
@@ -194,6 +220,7 @@ def load_instance_cycle_data(
             use_global_universe=resolved_use_global,
             cache=cache,
             retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
         ),
     )
 
@@ -400,6 +427,40 @@ def _log_stale_data_skip(
     )
 
 
+def _abort_cycle_timeout(
+    *,
+    runtime: LiveRuntime,
+    instance: Instance,
+    timeout_guard: CycleTimeoutGuard,
+) -> InstanceCycleResult:
+    log_error(
+        runtime.paths,
+        instance,
+        module=MODULE_NAME,
+        error_type=ErrorType.PROTOCOL.value,
+        message="cycle exceeded configured maximum duration",
+        context={
+            "reason": REASON_CYCLE_TIMEOUT,
+            "cycle_duration_ms": timeout_guard.elapsed_ms(),
+            "cycle_max_duration_ms": timeout_guard.limit_ms,
+        },
+    )
+    timings = CycleTimingSnapshot(
+        cycle_duration_ms=timeout_guard.elapsed_ms(),
+        load_duration_ms=timeout_guard.elapsed_ms(),
+        analysis_duration_ms=0,
+        decision_duration_ms=0,
+        io_wait_ms=timeout_guard.elapsed_ms(),
+    )
+    return InstanceCycleResult(
+        instance=instance,
+        timestamp_utc=now_utc(),
+        completed=False,
+        error_logged=True,
+        performance_timings=timings,
+    )
+
+
 def _enforce_cycle_duration_limit(
     *,
     runtime: LiveRuntime,
@@ -456,7 +517,16 @@ def run_instance_cycle(
 
     sync_instance_state(runtime, instance)
     retry_policy = build_retry_policy(runtime.config.runtime)
-    cycle_started = time.monotonic()
+    retry_alert_context = RetryAlertContext(
+        logger=runtime.system_logger,
+        instance=instance,
+        operation="load instance cycle data",
+    )
+    timeout_guard = CycleTimeoutGuard(
+        cycle_started=time.monotonic(),
+        limit_ms=runtime.config.runtime.cycle_max_duration_ms,
+    )
+    cycle_started = timeout_guard.cycle_started
     load_started = time.monotonic()
     load_duration_ms = 0
     analysis_duration_ms = 0
@@ -481,6 +551,7 @@ def run_instance_cycle(
             use_global_universe=use_global_universe,
             cache=cache,
             retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
         )
     except DataIOError as exc:
         _log_cycle_error(
@@ -497,6 +568,8 @@ def run_instance_cycle(
         )
 
     load_duration_ms = monotonic_elapsed_ms(load_started)
+    if timeout_guard.is_exceeded():
+        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
 
     market_result = validate_market_for_cycle(loaded.market_raw)
     if isinstance(market_result, ValidationResult):
@@ -571,6 +644,18 @@ def run_instance_cycle(
         )
     status = status_result.record
 
+    reconcile_position_with_status(
+        runtime.paths,
+        instance,
+        instance_memory.instance_state,
+        status,
+        timestamp_utc=resolved_timestamp,
+    )
+
+    if timeout_guard.is_exceeded():
+        instance_memory.instance_state.save(runtime.paths)
+        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
+
     universe_result = validate_universe_for_cycle(loaded.universe_raw)
     if isinstance(universe_result, ValidationResult):
         _log_cycle_error(
@@ -586,6 +671,10 @@ def run_instance_cycle(
             error_logged=True,
         )
     universe = universe_result
+
+    if timeout_guard.is_exceeded():
+        instance_memory.instance_state.save(runtime.paths)
+        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
 
     update_instance_instrument_state(instance_memory, market_bars)
     spread_snapshot = update_instance_spread_model(
@@ -635,6 +724,15 @@ def run_instance_cycle(
         timestamp_utc=resolved_timestamp,
     )
 
+    if timeout_guard.is_exceeded():
+        _finalize_cycle_state(
+            instance_memory=instance_memory,
+            runtime=runtime,
+            decision_result=decision_result,
+            timestamp_utc=resolved_timestamp,
+        )
+        return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
+
     resolved_trade_params = trade_params or build_risk_trade_params(runtime)
     management_result = run_instance_trade_management_phase(
         instance_memory=instance_memory,
@@ -646,6 +744,14 @@ def run_instance_cycle(
     execution_result: ExecutionResult | None = None
     trade_executed = False
     if runtime.allow_control_writes:
+        if timeout_guard.is_exceeded():
+            _finalize_cycle_state(
+                instance_memory=instance_memory,
+                runtime=runtime,
+                decision_result=decision_result,
+                timestamp_utc=resolved_timestamp,
+            )
+            return _abort_cycle_timeout(runtime=runtime, instance=instance, timeout_guard=timeout_guard)
         execution_started = time.monotonic()
         execution_result = run_execution_engine(
             paths=runtime.paths,
@@ -656,6 +762,11 @@ def run_instance_cycle(
             runtime=runtime.config.runtime,
             management_result=management_result,
             timestamp_utc=resolved_timestamp,
+            retry_alert_context=RetryAlertContext(
+                logger=runtime.system_logger,
+                instance=instance,
+                operation="execution io",
+            ),
         )
         ack_latency_ms = int((time.monotonic() - execution_started) * 1000)
         trade_executed = should_execute_trade(

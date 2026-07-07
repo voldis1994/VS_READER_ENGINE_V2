@@ -14,9 +14,12 @@ from engine.core.lifecycle import (
     spread_snapshot_from_record,
 )
 from engine.core.logging_setup import log_event
+from engine.core.history import archive_market_snapshot
 from engine.core.monitoring import MonitoringState, log_runtime_monitoring_summary, observe_instance_cycle
 from engine.core.performance import PerformanceState, flush_runtime_performance, observe_instance_performance
+from engine.core.retry import RetryAlertContext, build_retry_policy
 from engine.journal.error_journal import log_error
+from engine.journal.rotation import rotate_account_journals
 from engine.protocol.constants import ErrorType
 from engine.state.instance_state import InstanceState
 from engine.state.spread_state import SpreadState
@@ -195,6 +198,20 @@ def run_runtime_cycles(
         total_errors=sum(monitoring_state.error_counts.values()),
     )
     flush_runtime_performance(runtime, performance_state, force=True)
+
+    processed_accounts: set[str] = set()
+    for instance in target_instances:
+        archive_market_snapshot(runtime.paths, instance)
+        if instance.account_id in processed_accounts:
+            continue
+        rotate_account_journals(
+            runtime.paths,
+            instance.account_id,
+            retention_days=runtime.config.journal.retention_days,
+            current_utc=resolved_timestamp,
+        )
+        processed_accounts.add(instance.account_id)
+
     return OrchestratorCycleResult(
         instance_results=tuple(results),
         completed_count=completed_count,

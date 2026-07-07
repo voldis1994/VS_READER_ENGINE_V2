@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 from engine.core.clock import now_utc
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.core.retry import RetryPolicy, build_retry_policy, validate_control_command_retry
+from engine.core.history import archive_processed_ack, archive_processed_control
+from engine.core.retry import RetryAlertContext, RetryPolicy, build_retry_policy, validate_control_command_retry
 from engine.core.timeout import build_ack_timeout_config, is_ack_timeout_elapsed, log_ack_timeout
 from engine.execution.ack_reader import (
     AckInterpretation,
@@ -189,6 +190,7 @@ def run_execution_engine(
     monotonic_fn: Callable[[], float] = time.monotonic,
     sleep_fn: Callable[[float], None] = time.sleep,
     poll_interval_ms: int = 50,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> ExecutionResult:
     resolved_timestamp = timestamp_utc or now_utc()
     order_command = resolve_order_command(
@@ -229,6 +231,7 @@ def run_execution_engine(
         order_command,
         timestamp_utc=resolved_timestamp,
         retry_policy=retry_policy,
+        retry_alert_context=retry_alert_context,
     )
 
     if not _requires_trade_execution(order_command):
@@ -261,6 +264,7 @@ def run_execution_engine(
                 instance,
                 expected_command_id=order_command.command_id,
                 retry_policy=retry_policy,
+                retry_alert_context=retry_alert_context,
             )
         except SystemError:
             return False
@@ -295,6 +299,7 @@ def run_execution_engine(
         instance,
         expected_command_id=order_command.command_id,
         retry_policy=retry_policy,
+        retry_alert_context=retry_alert_context,
     )
     interpretation = interpret_ack(ack_record)
     log_ack_failure(paths, instance, ack_record)
@@ -311,6 +316,8 @@ def run_execution_engine(
         timestamp_utc=resolved_timestamp,
         price=order_command.stop_loss if order_command.action == OrderAction.OPEN.value else None,
     )
+    archive_processed_control(paths, instance)
+    archive_processed_ack(paths, instance)
 
     return ExecutionResult(
         order_command=order_command,

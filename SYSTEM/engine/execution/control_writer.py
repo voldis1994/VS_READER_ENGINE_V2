@@ -6,7 +6,7 @@ from engine.core.atomic_io import atomic_write_text
 from engine.core.clock import now_utc
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.core.retry import RetryPolicy
+from engine.core.retry import RetryAlertContext, RetryPolicy
 from engine.execution.command import OrderCommand
 from engine.protocol.constants import PROTOCOL_SCHEMA_VERSION
 from engine.protocol.errors import DataIOError
@@ -54,6 +54,7 @@ def write_control_file(
     control_command: ControlCommand,
     *,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> None:
     if control_command.instance_key.as_tuple() != instance.instance_key:
         raise _data_io_error(
@@ -66,7 +67,12 @@ def write_control_file(
     target_path = build_control_path(paths, instance)
     content = write_control(control_command)
     try:
-        atomic_write_text(target_path, content, retry_policy=retry_policy)
+        atomic_write_text(
+            target_path,
+            content,
+            retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
+        )
     except DataIOError:
         raise
     except OSError as exc:
@@ -84,11 +90,18 @@ def publish_control(
     *,
     timestamp_utc: str | None = None,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> ControlCommand:
     control_command = build_control_command(
         instance,
         order_command,
         timestamp_utc=timestamp_utc or now_utc(),
     )
-    write_control_file(paths, instance, control_command, retry_policy=retry_policy)
+    write_control_file(
+        paths,
+        instance,
+        control_command,
+        retry_policy=retry_policy,
+        retry_alert_context=retry_alert_context,
+    )
     return control_command

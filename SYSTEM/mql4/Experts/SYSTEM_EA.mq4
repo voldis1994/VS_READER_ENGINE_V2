@@ -39,7 +39,7 @@ void OnTick()
          return;
       }
 
-      if(!SYSTEM_ExportStatus(account_id))
+      if(!SYSTEM_ExportStatus(account_id, symbol, magic))
       {
          Print("SYSTEM status export failed for account ", account_id);
          return;

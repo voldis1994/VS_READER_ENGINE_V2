@@ -46,7 +46,8 @@ from engine.protocol.constants import (
     Side,
 )
 from engine.protocol.parser import parse_decision_journal_line, parse_error_journal_line
-from engine.protocol.models import StatusRecord, UniverseRecord
+from engine.protocol.models import SensorReading, StatusPositionSnapshot, StatusRecord, UniverseRecord
+from engine.protocol.writer import write_status
 from engine.validator.market_validator import ValidationResult
 from tests.core.config_payload import FIXTURE_CYCLE_UTC, valid_system_config_payload
 
@@ -500,6 +501,35 @@ def test_run_instance_cycle_passes_trade_management_to_execution(
         take_profit=1.10400,
     )
     instance_memory.instance_state.save(runtime.paths)
+    status_path = runtime.paths.account_dir(instance.account_id) / instance.status_filename()
+    status_path.write_text(
+        write_status(
+            StatusRecord(
+                schema_version=PROTOCOL_SCHEMA_VERSION,
+                timestamp_utc=FIXTURE_CYCLE_UTC,
+                account_id=instance.account_id,
+                connected=True,
+                trade_allowed=True,
+                balance=10000.0,
+                equity=10020.5,
+                margin_free=9800.0,
+                ea_version="1.0.0",
+                open_positions=(
+                    StatusPositionSnapshot(
+                        symbol=instance.symbol,
+                        magic=instance.magic,
+                        ticket=555,
+                        side=Side.BUY.value,
+                        volume=0.1,
+                        entry_price=1.10000,
+                        stop_loss=1.09800,
+                        take_profit=1.10400,
+                    ),
+                ),
+            )
+        ),
+        encoding="utf-8",
+    )
     captured: dict[str, object] = {}
 
     def _mock_run_execution_engine(**kwargs: object) -> ExecutionResult:

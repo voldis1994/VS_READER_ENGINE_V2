@@ -46,6 +46,9 @@ def format_dashboard(snapshot: DashboardSnapshot) -> str:
         f"SYSTEM dashboard @ {snapshot.generated_at_utc}",
         f"instances={snapshot.instance_count}",
     ]
+    if snapshot.monitoring_lines:
+        lines.append("monitoring:")
+        lines.extend(snapshot.monitoring_lines)
     if not snapshot.instances:
         lines.append("no active instances")
     else:

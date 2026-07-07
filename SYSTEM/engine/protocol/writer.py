@@ -255,6 +255,7 @@ SYSTEM_CONFIG_REQUIRED_FIELDS: tuple[str, ...] = (
     "risk",
     "analysis",
     "journal",
+    "trade_management",
     "dashboard",
     "logging",
 )

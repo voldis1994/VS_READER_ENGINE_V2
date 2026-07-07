@@ -9,11 +9,12 @@ from engine.core.atomic_io import atomic_read_text, atomic_write_text
 from engine.core.clock import now_utc
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.protocol.constants import AckStatus, TradeEvent
+from engine.protocol.constants import AckStatus, REASON_EXTERNAL_POSITION_CLOSE, TradeEvent
 from engine.protocol.errors import DataIOError
 from engine.protocol.models import AckRecord, TradeJournalEntry
 from engine.protocol.parser import parse_trade_journal_line
 from engine.protocol.writer import write_trade_journal_entry
+from engine.reason import build_reason
 
 MODULE_NAME = "journal.trade_journal"
 
@@ -228,3 +229,35 @@ def log_trade_ack(
         timestamp_utc=timestamp_utc,
         price=price,
     )
+
+
+def log_external_position_close(
+    paths: SystemPaths,
+    instance: Instance,
+    *,
+    ticket: int | None,
+    side: str | None,
+    volume: float | None,
+    timestamp_utc: str | None = None,
+) -> TradeJournalEntry:
+    reason = build_reason(
+        REASON_EXTERNAL_POSITION_CLOSE,
+        "position closed on MT4 without Python CLOSE command",
+        ticket=ticket,
+    )
+    entry = TradeJournalEntry(
+        trade_id=str(uuid4()),
+        timestamp_utc=timestamp_utc or now_utc(),
+        account_id=instance.account_id,
+        symbol=instance.symbol,
+        magic=instance.magic,
+        event=TradeEvent.CLOSE.value,
+        command_id=f"external-close-{uuid4()}",
+        ack_status=AckStatus.SUCCESS.value,
+        reason=reason,
+        side=side,
+        volume=volume,
+        ticket=ticket,
+    )
+    append_trade_journal_entry(paths, instance, entry)
+    return entry

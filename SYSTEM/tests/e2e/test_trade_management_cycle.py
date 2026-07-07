@@ -9,6 +9,7 @@ from engine.core.cycle import run_instance_cycle
 from engine.core.instance import Instance
 from engine.core.lifecycle import startup
 from engine.core.paths import SystemPaths
+from engine.core.history import read_archived_control_text
 from engine.execution.control_writer import build_control_path
 from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.protocol.constants import AckStatus, OrderAction, Side
@@ -71,7 +72,9 @@ def test_e2e_open_modify_cycle_updates_stop_loss(
     assert updated_state.position_stop_loss > original_stop_loss
     assert updated_state.last_ack_status == AckStatus.SUCCESS.value
 
-    control = parse_control(build_control_path(paths, instance).read_text(encoding="utf-8"))
+    archived_control_text = read_archived_control_text(paths, instance)
+    assert archived_control_text is not None
+    control = parse_control(archived_control_text)
     assert control.action == OrderAction.MODIFY.value
 
 

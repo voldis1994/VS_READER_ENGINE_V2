@@ -6,7 +6,7 @@ from pathlib import Path
 from engine.core.atomic_io import atomic_read_text
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.core.retry import RetryPolicy
+from engine.core.retry import RetryAlertContext, RetryPolicy
 from engine.journal.error_journal import log_error
 from engine.protocol.constants import AckStatus
 from engine.protocol.errors import ExecutionError, SystemError, get_error_type
@@ -40,9 +40,14 @@ def read_ack_record(
     instance: Instance,
     *,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> AckRecord:
     ack_path = build_ack_path(paths, instance)
-    raw_text = atomic_read_text(ack_path, retry_policy=retry_policy)
+    raw_text = atomic_read_text(
+        ack_path,
+        retry_policy=retry_policy,
+        retry_alert_context=retry_alert_context,
+    )
     return parse_ack(raw_text)
 
 
@@ -96,8 +101,14 @@ def read_ack_for_command(
     *,
     expected_command_id: str,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> AckRecord:
-    ack_record = read_ack_record(paths, instance, retry_policy=retry_policy)
+    ack_record = read_ack_record(
+        paths,
+        instance,
+        retry_policy=retry_policy,
+        retry_alert_context=retry_alert_context,
+    )
     validate_ack_record(
         ack_record,
         instance,
@@ -112,6 +123,7 @@ def read_ack_for_command_with_journal(
     *,
     expected_command_id: str,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> AckRecord:
     try:
         return read_ack_for_command(
@@ -119,6 +131,7 @@ def read_ack_for_command_with_journal(
             instance,
             expected_command_id=expected_command_id,
             retry_policy=retry_policy,
+            retry_alert_context=retry_alert_context,
         )
     except SystemError as exc:
         log_error(

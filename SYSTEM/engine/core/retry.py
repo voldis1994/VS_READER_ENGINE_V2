@@ -3,8 +3,10 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 
+from engine.core.alerts import build_retry_alert, emit_alert
+from engine.core.instance import Instance
 from engine.protocol.errors import ExecutionError
 from engine.protocol.models import RuntimeConfig
 
@@ -21,6 +23,13 @@ def _execution_error(message: str, **context: object) -> ExecutionError:
 class RetryPolicy:
     retry_max: int
     retry_delay_ms: int
+
+
+@dataclass(frozen=True)
+class RetryAlertContext:
+    logger: Any
+    instance: Instance | None = None
+    operation: str = ""
 
 
 def build_retry_policy(runtime: RuntimeConfig) -> RetryPolicy:
@@ -47,11 +56,35 @@ def validate_control_command_retry(
         )
 
 
+def _emit_retry_alert(
+    alert_context: RetryAlertContext | None,
+    *,
+    attempt: int,
+    error: Exception,
+) -> None:
+    if alert_context is None:
+        return
+    message = alert_context.operation or "retrying operation after transient failure"
+    emit_alert(
+        alert_context.logger,
+        build_retry_alert(
+            alert_context.instance,
+            message=message,
+            context={
+                "attempt": attempt,
+                "error": str(error),
+                "operation": alert_context.operation,
+            },
+        ),
+    )
+
+
 def run_with_retry(
     policy: RetryPolicy,
     operation: Callable[[], T],
     *,
     sleep_fn: Callable[[float], None] = time.sleep,
+    alert_context: RetryAlertContext | None = None,
 ) -> T:
     attempts = max_retry_attempts(policy)
     last_error: Exception | None = None
@@ -63,6 +96,7 @@ def run_with_retry(
             last_error = exc
             if attempt >= attempts:
                 break
+            _emit_retry_alert(alert_context, attempt=attempt, error=exc)
             if policy.retry_delay_ms > 0:
                 sleep_fn(policy.retry_delay_ms / 1000.0)
 

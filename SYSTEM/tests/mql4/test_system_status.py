@@ -85,6 +85,19 @@ def test_system_build_status_file_path_function_uses_status_template(status_sour
     assert "SYSTEM_BuildAccountDir" in body
 
 
+def test_system_status_exports_open_positions_field(status_source: str) -> None:
+    body = mql_source.function_body(status_source, "SYSTEM_FindOpenPositionForInstance")
+    assert "OrderSelect" in body
+    build_body = mql_source.function_body(status_source, "SYSTEM_BuildOpenPositionsJson")
+    assert "open_positions" in build_body
+
+
+def test_system_export_status_accepts_symbol_and_magic(status_source: str) -> None:
+    body = mql_source.function_body(status_source, "SYSTEM_ExportStatus")
+    assert "symbol" in body
+    assert "magic" in body
+
+
 def test_system_build_status_json_contains_required_status_fields() -> None:
     payload_text = status_reference.build_status_json(
         account_id="12345",
@@ -94,6 +107,8 @@ def test_system_build_status_json_contains_required_status_fields() -> None:
         equity=10020.5,
         margin_free=9800.0,
         timestamp_utc="2026-07-07T06:00:00.000Z",
+        symbol="EURUSD",
+        magic=100001,
     )
     payload = json.loads(payload_text)
     for field in STATUS_REQUIRED_FIELDS:

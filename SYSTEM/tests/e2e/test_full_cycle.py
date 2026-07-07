@@ -12,6 +12,7 @@ from engine.core.lifecycle import startup
 from engine.core.orchestrator import run_runtime_cycles
 from engine.core.paths import SystemPaths
 from engine.execution.ack_reader import build_ack_path
+from engine.core.history import read_archived_control_text
 from engine.execution.control_writer import build_control_path
 from engine.journal.decision_journal import build_decision_journal_path
 from engine.journal.error_journal import build_error_journal_path
@@ -156,8 +157,13 @@ def _assert_phase_outcomes(
     assert spread_state.record.sample_count >= 1
 
     control_path = build_control_path(paths, instance)
-    assert control_path.exists()
-    control = parse_control(control_path.read_text(encoding="utf-8"))
+    if expect_trade:
+        archived_control_text = read_archived_control_text(paths, instance)
+        assert archived_control_text is not None
+        control = parse_control(archived_control_text)
+    else:
+        assert control_path.exists()
+        control = parse_control(control_path.read_text(encoding="utf-8"))
 
     if expect_trade:
         assert result.decision_result.decision in {Decision.BUY.value, Decision.SELL.value}

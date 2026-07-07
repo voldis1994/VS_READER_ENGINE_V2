@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from engine.core.retry import RetryPolicy, run_with_retry
+from engine.core.retry import RetryAlertContext, RetryPolicy, run_with_retry
 from engine.protocol.errors import DataIOError
 
 ATOMIC_IO_MODULE = "core.atomic_io"
@@ -31,6 +31,7 @@ def atomic_write_text(
     *,
     encoding: str = DEFAULT_ENCODING,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> None:
     if retry_policy is None:
         _atomic_write_text_once(path, content, encoding=encoding)
@@ -38,6 +39,7 @@ def atomic_write_text(
     run_with_retry(
         retry_policy,
         lambda: _atomic_write_text_once(path, content, encoding=encoding),
+        alert_context=retry_alert_context,
     )
 
 
@@ -89,12 +91,14 @@ def atomic_read_text(
     *,
     encoding: str = DEFAULT_ENCODING,
     retry_policy: RetryPolicy | None = None,
+    retry_alert_context: RetryAlertContext | None = None,
 ) -> str:
     if retry_policy is None:
         return _atomic_read_text_once(path, encoding=encoding)
     return run_with_retry(
         retry_policy,
         lambda: _atomic_read_text_once(path, encoding=encoding),
+        alert_context=retry_alert_context,
     )
 
 
