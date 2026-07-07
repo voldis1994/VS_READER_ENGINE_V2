@@ -12,6 +12,7 @@ from engine.core.paths import (
 from engine.core.clock import format_utc_timestamp, now_utc, utc_now
 from engine.core.instance import Instance, ensure_unique_instance_keys
 from engine.core.config import load_system_config, parse_config_payload
+from engine.core.atomic_io import atomic_read_text, atomic_write_json, atomic_write_text, is_file_stable
 
 __all__ = [
     "format_utc_timestamp",
@@ -30,4 +31,8 @@ __all__ = [
     "ensure_unique_instance_keys",
     "load_system_config",
     "parse_config_payload",
+    "atomic_read_text",
+    "atomic_write_json",
+    "atomic_write_text",
+    "is_file_stable",
 ]
