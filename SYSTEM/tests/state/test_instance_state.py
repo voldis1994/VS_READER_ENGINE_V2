@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from engine.core.instance import Instance
+from engine.core.paths import SystemPaths
+from engine.state.instance_state import InstanceState
+
+
+def test_instance_state_contains_all_spec_72_3_fields(tmp_path) -> None:
+    instance = Instance(account_id="12345", symbol="EURUSD", magic=100001)
+    state = InstanceState(instance=instance)
+    state.update_cycle(decision="WAIT", reason="NO_SIGNAL", cycle_utc="2026-07-07T06:00:00.000Z")
+    state.update_execution(command_id="cmd-1", ack_status="SUCCESS")
+    state.update_instrument(digits=5, point=0.00001, pip=0.0001)
+    state.update_position(open_ticket=123456, position_side="BUY", position_volume=0.1)
+
+    payload = state.to_dict()
+    assert payload["last_decision"] == "WAIT"
+    assert payload["last_reason"] == "NO_SIGNAL"
+    assert payload["open_ticket"] == 123456
+    assert payload["position_side"] == "BUY"
+    assert payload["position_volume"] == 0.1
+    assert payload["last_command_id"] == "cmd-1"
+    assert payload["last_ack_status"] == "SUCCESS"
+    assert payload["instrument_digits"] == 5
+    assert payload["instrument_point"] == 0.00001
+    assert payload["instrument_pip"] == 0.0001
+    assert payload["cycle_count"] == 1
+
+
+def test_instance_state_persist_and_load(tmp_path) -> None:
+    paths = SystemPaths(root_path=tmp_path)
+    instance = Instance(account_id="12345", symbol="EURUSD", magic=100001)
+    state = InstanceState(instance=instance)
+    state.update_cycle(decision="BUY", reason="TREND_UP", cycle_utc="2026-07-07T06:01:00.000Z")
+    state.update_execution(command_id="cmd-2", ack_status="SUCCESS")
+    state.update_instrument(digits=5, point=0.00001, pip=0.0001)
+    state.update_position(open_ticket=900001, position_side="BUY", position_volume=0.2)
+    state.save(paths)
+
+    loaded = InstanceState.load(paths, instance)
+    assert loaded.last_decision == "BUY"
+    assert loaded.last_reason == "TREND_UP"
+    assert loaded.last_command_id == "cmd-2"
+    assert loaded.last_ack_status == "SUCCESS"
+    assert loaded.instrument_digits == 5
+    assert loaded.instrument_point == 0.00001
+    assert loaded.instrument_pip == 0.0001
+    assert loaded.open_ticket == 900001
+    assert loaded.position_side == "BUY"
+    assert loaded.position_volume == 0.2
+
+
+def test_instance_state_clears_position_fields_after_close(tmp_path) -> None:
+    instance = Instance(account_id="12345", symbol="EURUSD", magic=100001)
+    state = InstanceState(instance=instance)
+    state.update_position(open_ticket=900001, position_side="SELL", position_volume=0.3)
+    state.clear_position()
+
+    payload = state.to_dict()
+    assert "open_ticket" not in payload
+    assert "position_side" not in payload
+    assert "position_volume" not in payload
