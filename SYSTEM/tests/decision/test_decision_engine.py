@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 
 import engine.decision.engine as decision_engine_module
+from engine.core.config import parse_config_payload
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
 from engine.decision.engine import DecisionResult, run_decision_engine
@@ -15,8 +17,9 @@ from engine.protocol.constants import (
     REASON_SPREAD_ABNORMAL,
     Decision,
 )
-from engine.protocol.models import UniverseRecord
+from engine.protocol.models import SystemConfig, UniverseRecord
 from engine.state.instance_state import InstanceState
+from tests.core.config_payload import valid_system_config_payload
 
 
 def _bar(index: int, open_: float, high: float, low: float, close: float) -> NormalizedMarketBar:
@@ -67,22 +70,26 @@ def _sell_invalid_buy_valid_bars() -> tuple[NormalizedMarketBar, ...]:
     )
 
 
-def _weights() -> dict[str, float]:
-    return {
-        "momentum": 1.0,
-        "trend": 1.0,
-        "structure": 1.0,
-        "pressure": 1.0,
-        "behavior": 1.0,
-        "impact": 1.0,
-        "context": 1.0,
-    }
-
-
 def _instance_state() -> InstanceState:
     state = InstanceState(instance=Instance(account_id="12345", symbol="EURUSD", magic=100001))
     state.update_instrument(digits=5, point=0.00001, pip=0.0001)
     return state
+
+
+def _system_config(
+    *,
+    analysis: dict[str, Any] | None = None,
+    risk: dict[str, Any] | None = None,
+) -> SystemConfig:
+    payload = valid_system_config_payload()
+    payload["analysis"] = {
+        **payload["analysis"],
+        "lookback_bars": 3,
+        **(analysis or {}),
+    }
+    if risk is not None:
+        payload["risk"] = {**payload["risk"], **risk}
+    return parse_config_payload(payload)
 
 
 def _engine_kwargs(
@@ -91,19 +98,25 @@ def _engine_kwargs(
     relative_spread: float = 1.0,
     spread_threshold: float = 1.5,
     stop_loss_buffer: float = 0.0002,
+    reward_ratio: float = 2.0,
+    weights: dict[str, float] | None = None,
 ) -> dict[str, object]:
+    analysis_overrides: dict[str, Any] = {
+        "spread_relative_threshold": spread_threshold,
+        "stop_loss_buffer": stop_loss_buffer,
+    }
+    if weights is not None:
+        analysis_overrides["weights"] = weights
+
     return {
         "universe": _universe(),
         "market_bars": market_bars,
         "instance_state": _instance_state(),
         "relative_spread": relative_spread,
-        "spread_threshold": spread_threshold,
-        "volatility_threshold": 1.5,
-        "lookback_bars": 3,
-        "block_high_impact_news": True,
-        "weights": _weights(),
-        "stop_loss_buffer": stop_loss_buffer,
-        "reward_ratio": 2.0,
+        "system_config": _system_config(
+            analysis=analysis_overrides,
+            risk={"reward_ratio": reward_ratio},
+        ),
     }
 
 
@@ -165,15 +178,53 @@ def test_equal_scores_can_produce_wait_decision() -> None:
         "impact": 0.0,
         "context": 1.0,
     }
-    kwargs = _engine_kwargs(market_bars=_bullish_bars())
-    kwargs["weights"] = weights
-    result = run_decision_engine(**kwargs)
+    result = run_decision_engine(
+        **_engine_kwargs(market_bars=_bullish_bars(), weights=weights),
+    )
 
     assert result.buy_candidate.valid
     assert result.sell_candidate.valid
     assert result.buy_score == result.sell_score
     assert result.decision == Decision.WAIT.value
     assert "EQUAL_SCORES" in result.reason
+
+
+def test_decision_engine_uses_config_stop_loss_buffer_and_reward_ratio() -> None:
+    default_result = run_decision_engine(**_engine_kwargs(market_bars=_bullish_bars()))
+    custom_result = run_decision_engine(
+        **_engine_kwargs(
+            market_bars=_bullish_bars(),
+            stop_loss_buffer=0.0,
+            reward_ratio=3.0,
+        ),
+    )
+
+    assert default_result.buy_candidate.valid
+    assert custom_result.buy_candidate.valid
+    assert default_result.buy_candidate.stop_loss != custom_result.buy_candidate.stop_loss
+    assert default_result.buy_candidate.take_profit != custom_result.buy_candidate.take_profit
+
+
+def test_decision_engine_uses_config_spread_threshold() -> None:
+    blocked = run_decision_engine(
+        **_engine_kwargs(
+            market_bars=_bullish_bars(),
+            relative_spread=2.0,
+            spread_threshold=1.5,
+        ),
+    )
+    allowed = run_decision_engine(
+        **_engine_kwargs(
+            market_bars=_bullish_bars(),
+            relative_spread=2.0,
+            spread_threshold=2.5,
+        ),
+    )
+
+    assert not blocked.buy_candidate.valid
+    assert blocked.buy_candidate.invalid_reason is not None
+    assert "SPREAD_ABNORMAL" in blocked.buy_candidate.invalid_reason
+    assert allowed.buy_candidate.valid
 
 
 def test_decision_engine_logs_error_and_does_not_swallow_exception(

@@ -1,105 +1,242 @@
-# P01–P30 arhitektūras audits
+# P31–P45 arhitektūras audits
 
 **Datums:** 2026-07-07  
-**Apjoms:** P01–P30  
-**Avoti:** `docs/SYSTEM_SPECIFICATION.md`, `docs/IMPLEMENTATION_PLAN.md`
+**Apjoms:** P31–P45 (analysis, decision, risk/rules)  
+**Avoti:** `docs/SYSTEM_SPECIFICATION.md`, `docs/IMPLEMENTATION_PLAN.md`  
+**Metode:** Statiska koda un atkarību pārbaude. Kods nav mainīts.
 
 ---
 
 ## Kopsavilkums
 
-Audits **nav pilnībā iziets**. Atrastas būtiskas neatbilstības P27–P28 implementācijā, kas ietekmē:
+Audits **nav pilnībā iziets**. P31–P45 funkcionalitāte un testi (330) ir stabili, un BUY/SELL/WAIT/EDGE arhitektūras virziens atbilst SYSTEM kā edge discovery platformai. Tomēr konstatētas specifikācijas līguma un uzturēšanas drift problēmas, kas nākamajos posmos (P46–P48, `run_live`) prasīs koncentrētus labojumus.
 
-- atbilstību specifikācijas cache/journal principiem,
-- dead code/dublēšanas risku.
-
-Kritiskākie punkti: `core/cache.py` faktiski nav integrēts darba plūsmā un `error_journal` nav reāli append-only implementācijas ziņā.
-
----
-
-## A1. P27 cache modulis nav integrēts (dead code + arhitektūras dublēšanās)
-
-**Smagums:** Augsts  
-**Spec/Plāns:** `IMPLEMENTATION_PLAN.md` P27; `SYSTEM_SPECIFICATION.md` §30.5, §75 (cache hash kā I/O optimizācijas mehānisms)
-
-### Pierādījumi
-
-- `engine/core/cache.py` ir izveidots, bet netiek izmantots loaderos.
-- Meklējums pēc lietojuma:
-  - `engine/core/__init__.py` importē `core.cache`
-  - citos moduļos `core.cache` netiek importēts.
-- `market_loader.py` un `sensor_loader.py` uztur **atsevišķu iekšējo cache** (`_CacheEntry`, `_content_hash`) neatkarīgi no P27 moduļa.
-
-### Sekas
-
-- P27 modulis praktiski ir neizmantots produkcijas plūsmā (dead code risks).
-- Vienlaicīgi pastāv 2 cache pieejas (loader-lokālā un `core/cache.py`) → dublēšanās un patch risks nākamajos posmos.
-
----
-
-## A2. `core/cache.py` neatbilst pašas specifikācijas modified-time prasībai
-
-**Smagums:** Vidējs  
-**Spec/Plāns:** `SYSTEM_SPECIFICATION.md` §75 (“hash tiek salīdzināts ar faila modified time; konflikta gadījumā prioritāte ir saturs”)
-
-### Pierādījumi
-
-- `engine/core/cache.py:32` aprēķina `current_mtime_ns`, bet neizmanto lēmumā.
-- `should_reload(...)` atgriež tikai `cached["hash"] != current_hash`.
-- `modified_ns` tiek glabāts (`write_hash`) un parsēts (`parse_hash_record`), bet faktiski netiek izmantots.
-
-### Sekas
-
-- Prasība par hash+mtime salīdzināšanu nav pilnībā realizēta.
-- Modulis satur daļēji “nepabeigtu” loģiku (future patch indicator).
-
----
-
-## A3. P28 Error Journal nav īsti append-only ieviešanas līmenī
-
-**Smagums:** Augsts  
-**Spec/Plāns:** `IMPLEMENTATION_PLAN.md` P28 (“Append-only”); `SYSTEM_SPECIFICATION.md` §19.10, §65, §1147 (journal faili append-only)
-
-### Pierādījumi
-
-- `engine/journal/error_journal.py:21-28`:
-  - nolasa visu esošo failu saturu,
-  - pievieno jaunu rindu atmiņā,
-  - pārraksta visu failu ar `atomic_write_text(...)`.
-
-### Sekas
-
-- Semantiski saturs tiek pievienots, bet implementācija ir “read+rewrite whole file”, nevis īsta append pieeja.
-- Pie konkurējošas rakstīšanas iespējami lost-update scenāriji.
-- Lieliem journal failiem aug I/O izmaksas.
-
----
-
-## A4. BUY/SELL/WAIT/EDGE arhitektūras gatavība: daļēja, bet nav degradēta uz “parastu MT4 robotu”
-
-**Smagums:** Novērojums (ne bloķējošs)
-
-### Secinājums
-
-- Šajā posmā nav pazīmju, ka analysis moduļi paši sāktu izpildīt trade komandas.
-- `analysis/context.py` un `analysis/structure.py` ģenerē analītisku izvadi, nevis order darbības.
-- Aizliegto importa virzienu pārkāpumi (analysis→decision/risk/execution, loader→analysis/decision/risk/execution) netika konstatēti.
-
-### Piezīme
-
-- Pilna BUY/SELL/WAIT/EDGE plūsmas verifikācija būs iespējama pēc decision/risk/execution posmu ieviešanas.
+**Kritiskākie punkti:** trūkstošs `spread_filter_passed` kontekstā (A1), `buy.py`/`sell.py` masīva dublēšanās (A3). **A2 (konfigurācijas centralizācija) — labots.**
 
 ---
 
 ## Kas ir kārtībā
 
-- Cikliskas atkarības acīmredzami netika konstatētas auditētajā P01–P30 modulī.
-- `protocol/__init__.py` publiskais eksports ir plašs un konsekvents.
-- `analysis` slānis šobrīd nav sācis tieši tirgot.
-- Testu kopa lokāli iziet, taču tests šobrīd nepietiekami noķer A1–A3 arhitektūras driftu.
+### Atbilstība IMPLEMENTATION_PLAN.md (fāžu apjoms)
+
+| Fāze | Modulis | Statuss |
+|------|---------|---------|
+| P31 | `analysis/momentum.py` | Ieviests |
+| P32 | `analysis/pressure.py` | Ieviests |
+| P33 | `analysis/behavior.py` | Ieviests |
+| P34 | `analysis/impact.py` | Ieviests |
+| P35 | `analysis/engine.py` | Ieviests, fiksēta secība |
+| P36 | `decision/reason.py` | Ieviests |
+| P37–P39 | `decision/filters/*` | Ieviesti |
+| P40–P41 | `decision/buy.py`, `sell.py` | Ieviesti |
+| P42 | `decision/scorer.py` | Ieviests |
+| P43 | `decision/wait_block.py` | Ieviests |
+| P44 | `decision/engine.py` | Ieviests |
+| P45 | `risk/rules.py` | Ieviests |
+
+### BUY/SELL/WAIT/EDGE arhitektūra
+
+- **Virzienu simetrija:** `run_decision_engine()` vienmēr aprēķina gan `buy_candidate`, gan `sell_candidate` pirms lēmuma (P44 tests to apstiprina).
+- **Edge salīdzināšana, ne filtrēšana:** `scorer.compare_candidates()` salīdzina `buy_score` un `sell_score`; augstākais nosaka `preferred_side`. Scoring neizdod BLOCK un neizlaiž SELL.
+- **WAIT nav noklusējums:** `evaluate_wait_decision()` atgriež WAIT tikai `BOTH_DIRECTIONS_INVALID`, `EQUAL_SCORES` vai `EXECUTION_NOT_POSSIBLE` gadījumā. Ja derīgs tikai viens virziens → `preferred_side` ir tas virziens, nevis WAIT.
+- **Risks nav bailīgs WAIT-bots:** P45 `risk/rules.py` atgriež tikai `allowed=True/False` ar BLOCK reason kodiem (`RISK_*`, `ACCOUNT_NOT_TRADEABLE`). Risks neizdod WAIT.
+- **Analysis slānis netirgo:** `analysis/*` neimportē `decision`, `risk` vai `execution`. `test_analysis_engine_does_not_call_decision_or_risk` to apstiprina.
+
+### Atkarības un cikli
+
+```
+normalizer/protocol/state
+        ↓
+    analysis (P29–P35)
+        ↓
+    decision (P36–P44)  ← journal (error log)
+        ↓
+    risk/rules (P45)    ← decision.reason (tikai build_reason)
+```
+
+- **Cikliskas atkarības:** Nav konstatētas.
+- **Aizliegtie importi (spec §389):** `analysis → decision/risk` nav. `loader → analysis/decision/risk` nav.
+
+### Publiskā API konsekvence (daļēji)
+
+- `engine/analysis/__init__.py` un `engine/decision/__init__.py` eksportē galvenās datu klases un `run_*` funkcijas konsekventi.
+- `DecisionResult` lauki atbilst spec §52.3 (`decision_id`, `decision`, `reason`, `preferred_side`, kandidāti, score).
+- `BuyCandidate` / `SellCandidate` struktūra ir simetriska (spec §47–48).
+
+---
+
+## A1. `AnalysisContext` trūkst `spread_filter_passed` (spec §58.3)
+
+**Smagums:** Vidējs–augsts  
+**Spec:** `SYSTEM_SPECIFICATION.md` §58.3 — “Ja spread nav pieņemams, analīzes kontekstā tiek atzīmēts `spread_filter_passed: false`.”
+
+### Pierādījumi
+
+- `engine/analysis/context.py` — `AnalysisContext` satur tikai `session`, `regime`, `news_active`, `context_quality`, `trade_environment`.
+- Spread filtrs (P37) darbojas atsevišķi `decision/filters/spread_filter.py`, bet konteksta objektā netiek atspoguļots.
+
+### Sekas
+
+- Specifikācijas līgums starp analīzi un lēmumu posmu nav pilnīgs.
+- Dashboard/žurnāli nākotnē nevarēs vienoti nolasīt spread filtra stāvokli no konteksta.
+
+---
+
+## A2. Lēmumu un scoring parametri nav `config/system.json` shēmā — **LABOTS**
+
+**Smagums:** Augsts (patch risks P46–P48, `run_live`)  
+**Spec:** §46.5 (`analysis.weights`), §58.2 (`spread_relative_threshold`), §59.3 (`volatility_relative_threshold`), §60.2 (`block_high_impact_news`), §55–56 (`reward_ratio`, SL buffer)  
+**Statuss:** **A2 fixed** (2026-07-07)
+
+### Bija
+
+- `protocol.models.AnalysisConfig` saturēja tikai `lookback_bars`.
+- `protocol.models.RiskConfig` nesaturēja `reward_ratio`.
+- `run_decision_engine()` saņēma kā brīvus argumentus: `weights`, `spread_threshold`, `volatility_threshold`, `block_high_impact_news`, `stop_loss_buffer`, `reward_ratio`.
+
+### Labojums
+
+- `config/system.json` un `AnalysisConfig` paplašināti ar: `spread_relative_threshold`, `volatility_relative_threshold`, `block_high_impact_news`, `stop_loss_buffer`, `weights` (`AnalysisWeights`).
+- `RiskConfig` paplašināts ar `reward_ratio`.
+- `run_decision_engine()` lasa parametrus no `system_config: SystemConfig` caur `engine/core/config.py` loader/validator.
+- Testi: noklusētās vērtības, trūkstošo lauku kļūdas, decision flow izmanto config (ne hardcoded).
+
+### Sekas (pēc labojuma)
+
+- Konfigurācijas vienīgais avots (`config/system.json`) princips (spec §19) šiem parametriem tiek ievērots.
+- Orchestrācijas slānis (`run_live`, P48) var ielādēt parametrus no config bez ad-hoc padošanas.
+
+---
+
+## A3. `buy.py` un `sell.py` masīva koda dublēšanās
+
+**Smagums:** Vidējs  
+**Plāns:** P40/P41 atsevišķi moduļi (pareizi), bet implementācija ir ~95% spoguļota.
+
+### Dublētie bloki
+
+- `_COMPONENT_KEYS`, `_round_price`, `calculate_*_score` (identiska loģika)
+- Filtru ķēde (`spread` → `volatility` → `news` → `market_bars`) — identiska struktūra
+- `_invalid_candidate` — identiska struktūra
+
+### Sekas
+
+- Jebkura filtra vai validācijas izmaiņa prasa sinhronizēt abus failus — augsts patch un regressijas risks.
+- Nav dead code, bet ir strukturāla dublēšanās, kas apgrūtina uzturēšanu.
+
+---
+
+## A4. `risk` slānis importē `decision.reason`
+
+**Smagums:** Zemējs–vidējs  
+**Spec:** §389 — slāņu virziens: `decision → risk`, ne otrādi.
+
+### Pierādījumi
+
+- `engine/risk/rules.py:5` — `from engine.decision.reason import build_reason`
+
+### Sekas
+
+- Neliela slāņu inversija. `reason.py` ir utilīta, nevis lēmumu loģika, tāpēc praktiskā kaitējuma nav šodien.
+- Ilgtermīnā `build_reason` loģiskāk dzīvotu `protocol` vai kopīgā `engine/reason` modulī, lai `risk` nebūtu atkarīgs no `decision`.
+
+---
+
+## A5. `TrendAnalysis` dublē `MomentumAnalysis` trend laukus
+
+**Smagums:** Zems  
+**Vieta:** `engine/analysis/engine.py`
+
+### Pierādījumi
+
+- `TrendAnalysis` satur `trend_direction`, `trend_strength`, `trend_duration_bars`, `higher_highs`, `lower_lows`.
+- Tie paši lauki jau ir `MomentumAnalysis` (P31).
+- `AnalysisEngineResult` glabā gan `momentum`, gan `trend` ar kopētiem datiem.
+
+### Sekas
+
+- Nav funkcionāla kļūda, bet lieks datu dublikāts un potenciāla neskaidrība API patērētājiem (`result.momentum.trend_direction` vs `result.trend.trend_direction`).
+
+---
+
+## A6. `resolve_preferred_side` un `compare_candidates` score avoti atšķiras
+
+**Smagums:** Zems  
+**Vieta:** `engine/decision/scorer.py`
+
+### Pierādījumi
+
+- `resolve_preferred_side()` lieto neapstrādātus `buy_candidate.buy_score` / `sell_candidate.sell_score`.
+- `compare_candidates()` reizina abus ar `context.context_quality` pirms `preferred_side` noteikšanas.
+
+### Sekas
+
+- `preferred_side` secība parasti saglabājas (simetriska reizināšana), bet publiskais API atgriež atšķirīgus score lielumus atkarībā no izsauktās funkcijas.
+- `decision/engine.py` izmanto tikai `compare_candidates()`, nevis `resolve_preferred_side()` — nav runtime kļūdas, bet API dokumentācijas/līguma neskaidrība.
+
+---
+
+## A7. `RiskContext` metrikas nav saistītas ar persistētu avotu
+
+**Smagums:** Zemējs (gaidāms P48+)  
+**Spec:** §53.3 — risk engine ievade ietver status un instance state.
+
+### Pierādījumi
+
+- `RiskContext` satur `daily_loss_percent` un `drawdown_percent`, kas tiek padoti no ārpuses.
+- Nav moduļa, kas šīs vērtības aprēķina no trade journal, state vai status.
+
+### Sekas
+
+- P45 apjomā pareizi (tikai noteikumu definīcijas), bet integrācijā (P48) obligāti jāievieš metrikas avots — citādi `run_live` patch.
+
+---
+
+## A8. Testa faila nosaukums atšķiras no plāna (P44)
+
+**Smagums:** Niecs  
+**Plāns:** `tests/decision/test_engine.py`  
+**Faktiski:** `tests/decision/test_decision_engine.py`
+
+### Iemesls
+
+- Pytest importa konflikts ar `tests/analysis/test_engine.py`.
+
+### Sekas
+
+- Nav funkcionālas ietekmes. Dokumentācijas/plāna atšķirība.
+
+---
+
+## Pārbaudes, kas **nav** problēmas
+
+| Jautājums | Secinājums |
+|-----------|------------|
+| Vai sistēma ir kļuvusi par bailīgu WAIT-default botu? | **Nē.** WAIT ir ierobežots; risks dod BLOCK; viens derīgs virziens dod BUY/SELL. |
+| Vai Decision Engine dod vienpusēju signālu? | **Nē.** Abi virzieni tiek aprēķināti un salīdzināti ar scoring. |
+| Vai ir dead code P31–P45? | **Nav būtiska.** `resolve_preferred_side` ir publisks P42 API, lietots testos. |
+| Vai P45 risk rules integrētas decision engine? | **Vēl ne** — paredzēts P48; nav P31–P45 apjoma kļūda. |
+| Vai filtri izraisa BLOCK tieši decision engine? | **Nē** — filtri atzīmē kandidātu `valid=false`; BLOCK tikai caur `evaluate_block_decision(block_reason=...)`. Atbilst spec §58.3 virziena invalidācijai. |
+
+---
+
+## Testu stāvoklis
+
+```
+335 passed (P01–P45, A2)
+```
+
+Testi apstiprina fāžu funkcionalitāti un A2 config centralizāciju; A1 un A3–A8 specifikācijas driftu vēl sedz daļēji.
 
 ---
 
 ## Kopējais secinājums
 
-P01–P30 audits atklāj būtiskas arhitektūras neatbilstības (A1–A3), tāpēc rezultāts nav “pilnībā iziets”.
+P31–P45 audits **nav pilnībā iziets** konstatēto problēmu dēļ (īpaši **A1**, **A3**). **A2 ir labots.**
+
+Arhitektūras virziens — simetriska BUY/SELL edge discovery ar atsevišķu riska BLOCK slāni — ir **saglabāts** un atbilst SYSTEM filozofijai. Problēmas ir galvenokārt **līguma pilnīguma** un **integrācijas gatavības**, nevis fundamentālas lēmumu arhitektūras kļūdas.
+
+**Ieteicamā secība labojumiem (ārpus šī audita):**
+1. ~~Paplašināt `AnalysisConfig` / `RiskConfig` ar spec parametriem (A2).~~ **Done.**
+2. Pievienot `spread_filter_passed` kontekstam vai dokumentēt alternatīvu plūsmu (A1).
+3. Pārdomāt `buy`/`sell` kopīgo kodu pirms P48, lai samazinātu dublēšanu (A3).

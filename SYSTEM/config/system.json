@@ -33,10 +33,24 @@
   "risk": {
     "max_open_positions_per_instance": 1,
     "max_daily_loss_percent": 2.0,
-    "max_drawdown_percent": 10.0
+    "max_drawdown_percent": 10.0,
+    "reward_ratio": 2.0
   },
   "analysis": {
-    "lookback_bars": 120
+    "lookback_bars": 120,
+    "spread_relative_threshold": 1.5,
+    "volatility_relative_threshold": 1.5,
+    "block_high_impact_news": true,
+    "stop_loss_buffer": 0.0002,
+    "weights": {
+      "momentum": 1.0,
+      "trend": 1.0,
+      "structure": 1.0,
+      "pressure": 1.0,
+      "behavior": 1.0,
+      "impact": 1.0,
+      "context": 1.0
+    }
   },
   "journal": {
     "retention_days": 30

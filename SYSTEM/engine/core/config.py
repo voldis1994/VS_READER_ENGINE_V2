@@ -46,9 +46,30 @@ _RISK_FIELDS = frozenset(
         "max_open_positions_per_instance",
         "max_daily_loss_percent",
         "max_drawdown_percent",
+        "reward_ratio",
     }
 )
-_ANALYSIS_FIELDS = frozenset({"lookback_bars"})
+_ANALYSIS_FIELDS = frozenset(
+    {
+        "lookback_bars",
+        "spread_relative_threshold",
+        "volatility_relative_threshold",
+        "block_high_impact_news",
+        "stop_loss_buffer",
+        "weights",
+    }
+)
+_ANALYSIS_WEIGHT_FIELDS = frozenset(
+    {
+        "momentum",
+        "trend",
+        "structure",
+        "pressure",
+        "behavior",
+        "impact",
+        "context",
+    }
+)
 _JOURNAL_FIELDS = frozenset({"retention_days"})
 _DASHBOARD_FIELDS = frozenset({"refresh_interval_ms"})
 _LOGGING_FIELDS = frozenset({"level", "format"})
@@ -133,10 +154,12 @@ def _assert_schema_shape(payload: dict[str, Any]) -> None:
         item_mapping = _ensure_mapping(item, f"instances[{index}]")
         _assert_exact_fields(item_mapping, _INSTANCE_FIELDS, f"instances[{index}]")
     _assert_exact_fields(_ensure_mapping(payload["risk"], "risk"), _RISK_FIELDS, "risk")
+    analysis_mapping = _ensure_mapping(payload["analysis"], "analysis")
+    _assert_exact_fields(analysis_mapping, _ANALYSIS_FIELDS, "analysis")
     _assert_exact_fields(
-        _ensure_mapping(payload["analysis"], "analysis"),
-        _ANALYSIS_FIELDS,
-        "analysis",
+        _ensure_mapping(analysis_mapping["weights"], "analysis.weights"),
+        _ANALYSIS_WEIGHT_FIELDS,
+        "analysis.weights",
     )
     _assert_exact_fields(_ensure_mapping(payload["journal"], "journal"), _JOURNAL_FIELDS, "journal")
     _assert_exact_fields(

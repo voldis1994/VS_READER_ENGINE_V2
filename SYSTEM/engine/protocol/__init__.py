@@ -91,6 +91,7 @@ from engine.protocol.errors import (
 from engine.protocol.models import (
     AckRecord,
     AnalysisConfig,
+    AnalysisWeights,
     ControlCommand,
     DashboardConfig,
     DecisionJournalEntry,
@@ -245,6 +246,7 @@ __all__ = [
     "is_wait_reason_code",
     "AckRecord",
     "AnalysisConfig",
+    "AnalysisWeights",
     "ControlCommand",
     "DashboardConfig",
     "DecisionJournalEntry",

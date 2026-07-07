@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
 from uuid import uuid4
 
 from engine.analysis.engine import run_analysis_engine
@@ -19,7 +18,7 @@ from engine.decision.wait_block import evaluate_block_decision, evaluate_wait_de
 from engine.journal.error_journal import log_error
 from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.protocol.constants import Decision, ErrorType, Side
-from engine.protocol.models import UniverseRecord
+from engine.protocol.models import UniverseRecord, SystemConfig
 from engine.state.instance_state import InstanceState
 
 MODULE_NAME = "decision.engine"
@@ -79,23 +78,33 @@ def run_decision_engine(
     market_bars: tuple[NormalizedMarketBar, ...],
     instance_state: InstanceState,
     relative_spread: float,
-    spread_threshold: float,
-    volatility_threshold: float,
-    lookback_bars: int,
-    block_high_impact_news: bool,
-    weights: Mapping[str, float],
-    stop_loss_buffer: float,
-    reward_ratio: float,
+    system_config: SystemConfig,
     block_reason: str | None = None,
     execution_possible: bool = True,
     paths: SystemPaths | None = None,
 ) -> DecisionResult:
     try:
+        analysis_config = system_config.analysis
+        risk_config = system_config.risk
+        weights = analysis_config.weights.as_mapping()
+
         analysis = run_analysis_engine(universe, market_bars)
-        relative_volatility = calculate_relative_volatility(market_bars, lookback_bars=lookback_bars)
-        spread_filter = evaluate_spread_filter(relative_spread, spread_threshold)
-        volatility_filter = evaluate_volatility_filter(relative_volatility, volatility_threshold)
-        news_filter = evaluate_news_filter(universe, block_high_impact_news=block_high_impact_news)
+        relative_volatility = calculate_relative_volatility(
+            market_bars,
+            lookback_bars=analysis_config.lookback_bars,
+        )
+        spread_filter = evaluate_spread_filter(
+            relative_spread,
+            analysis_config.spread_relative_threshold,
+        )
+        volatility_filter = evaluate_volatility_filter(
+            relative_volatility,
+            analysis_config.volatility_relative_threshold,
+        )
+        news_filter = evaluate_news_filter(
+            universe,
+            block_high_impact_news=analysis_config.block_high_impact_news,
+        )
 
         buy_candidate = calculate_buy_candidate(
             analysis=analysis,
@@ -105,8 +114,8 @@ def run_decision_engine(
             news_filter=news_filter,
             instance_state=instance_state,
             weights=weights,
-            stop_loss_buffer=stop_loss_buffer,
-            reward_ratio=reward_ratio,
+            stop_loss_buffer=analysis_config.stop_loss_buffer,
+            reward_ratio=risk_config.reward_ratio,
         )
         sell_candidate = calculate_sell_candidate(
             analysis=analysis,
@@ -116,8 +125,8 @@ def run_decision_engine(
             news_filter=news_filter,
             instance_state=instance_state,
             weights=weights,
-            stop_loss_buffer=stop_loss_buffer,
-            reward_ratio=reward_ratio,
+            stop_loss_buffer=analysis_config.stop_loss_buffer,
+            reward_ratio=risk_config.reward_ratio,
         )
         scoring = compare_candidates(
             buy_candidate=buy_candidate,

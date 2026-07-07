@@ -291,11 +291,52 @@ class InstanceDefinition:
         }
 
 
+ANALYSIS_WEIGHT_KEYS: tuple[str, ...] = (
+    "momentum",
+    "trend",
+    "structure",
+    "pressure",
+    "behavior",
+    "impact",
+    "context",
+)
+
+
+@dataclass(frozen=True)
+class AnalysisWeights:
+    momentum: float
+    trend: float
+    structure: float
+    pressure: float
+    behavior: float
+    impact: float
+    context: float
+
+    def __post_init__(self) -> None:
+        for field_name in ANALYSIS_WEIGHT_KEYS:
+            value = getattr(self, field_name)
+            normalized = _require_number(value, f"analysis.weights.{field_name}")
+            if normalized < 0:
+                raise ValidationError(
+                    f"analysis.weights.{field_name} must be >= 0",
+                    module="protocol.models",
+                    context={"field": field_name, "value": normalized},
+                )
+            object.__setattr__(self, field_name, normalized)
+
+    def as_mapping(self) -> dict[str, float]:
+        return {field_name: getattr(self, field_name) for field_name in ANALYSIS_WEIGHT_KEYS}
+
+    def to_dict(self) -> dict[str, float]:
+        return self.as_mapping()
+
+
 @dataclass(frozen=True)
 class RiskConfig:
     max_open_positions_per_instance: int
     max_daily_loss_percent: float
     max_drawdown_percent: float
+    reward_ratio: float
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -317,18 +358,32 @@ class RiskConfig:
             "max_drawdown_percent",
             _require_number(self.max_drawdown_percent, "risk.max_drawdown_percent"),
         )
+        reward_ratio = _require_number(self.reward_ratio, "risk.reward_ratio")
+        if reward_ratio <= 0:
+            raise ValidationError(
+                "risk.reward_ratio must be > 0",
+                module="protocol.models",
+                context={"value": reward_ratio},
+            )
+        object.__setattr__(self, "reward_ratio", reward_ratio)
 
     def to_dict(self) -> dict[str, int | float]:
         return {
             "max_open_positions_per_instance": self.max_open_positions_per_instance,
             "max_daily_loss_percent": self.max_daily_loss_percent,
             "max_drawdown_percent": self.max_drawdown_percent,
+            "reward_ratio": self.reward_ratio,
         }
 
 
 @dataclass(frozen=True)
 class AnalysisConfig:
     lookback_bars: int
+    spread_relative_threshold: float
+    volatility_relative_threshold: float
+    block_high_impact_news: bool
+    stop_loss_buffer: float
+    weights: AnalysisWeights
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -336,9 +391,57 @@ class AnalysisConfig:
             "lookback_bars",
             _require_int(self.lookback_bars, "analysis.lookback_bars", minimum=1),
         )
+        spread_relative_threshold = _require_number(
+            self.spread_relative_threshold,
+            "analysis.spread_relative_threshold",
+        )
+        if spread_relative_threshold <= 0:
+            raise ValidationError(
+                "analysis.spread_relative_threshold must be > 0",
+                module="protocol.models",
+                context={"value": spread_relative_threshold},
+            )
+        object.__setattr__(self, "spread_relative_threshold", spread_relative_threshold)
+        volatility_relative_threshold = _require_number(
+            self.volatility_relative_threshold,
+            "analysis.volatility_relative_threshold",
+        )
+        if volatility_relative_threshold <= 0:
+            raise ValidationError(
+                "analysis.volatility_relative_threshold must be > 0",
+                module="protocol.models",
+                context={"value": volatility_relative_threshold},
+            )
+        object.__setattr__(self, "volatility_relative_threshold", volatility_relative_threshold)
+        object.__setattr__(
+            self,
+            "block_high_impact_news",
+            _require_bool(self.block_high_impact_news, "analysis.block_high_impact_news"),
+        )
+        stop_loss_buffer = _require_number(self.stop_loss_buffer, "analysis.stop_loss_buffer")
+        if stop_loss_buffer < 0:
+            raise ValidationError(
+                "analysis.stop_loss_buffer must be >= 0",
+                module="protocol.models",
+                context={"value": stop_loss_buffer},
+            )
+        object.__setattr__(self, "stop_loss_buffer", stop_loss_buffer)
+        if not isinstance(self.weights, AnalysisWeights):
+            raise ValidationError(
+                "analysis.weights must be an AnalysisWeights instance",
+                module="protocol.models",
+                context={"value_type": type(self.weights).__name__},
+            )
 
-    def to_dict(self) -> dict[str, int]:
-        return {"lookback_bars": self.lookback_bars}
+    def to_dict(self) -> dict[str, int | float | bool | dict[str, float]]:
+        return {
+            "lookback_bars": self.lookback_bars,
+            "spread_relative_threshold": self.spread_relative_threshold,
+            "volatility_relative_threshold": self.volatility_relative_threshold,
+            "block_high_impact_news": self.block_high_impact_news,
+            "stop_loss_buffer": self.stop_loss_buffer,
+            "weights": self.weights.to_dict(),
+        }
 
 
 @dataclass(frozen=True)

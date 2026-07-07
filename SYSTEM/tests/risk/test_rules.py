@@ -26,6 +26,7 @@ def _risk_config() -> RiskConfig:
         max_open_positions_per_instance=1,
         max_daily_loss_percent=2.0,
         max_drawdown_percent=10.0,
+        reward_ratio=2.0,
     )
 
 

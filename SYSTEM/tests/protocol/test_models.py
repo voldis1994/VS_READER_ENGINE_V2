@@ -11,6 +11,7 @@ from engine.protocol.errors import ValidationError
 from engine.protocol.models import (
     AckRecord,
     AnalysisConfig,
+    AnalysisWeights,
     ControlCommand,
     DashboardConfig,
     DecisionJournalEntry,
@@ -33,6 +34,28 @@ from engine.protocol.models import (
     UniverseRecord,
     validate_instance_key,
 )
+
+
+def _analysis_config(**overrides: object) -> AnalysisConfig:
+    weights = AnalysisWeights(
+        momentum=1.0,
+        trend=1.0,
+        structure=1.0,
+        pressure=1.0,
+        behavior=1.0,
+        impact=1.0,
+        context=1.0,
+    )
+    values: dict[str, object] = {
+        "lookback_bars": 120,
+        "spread_relative_threshold": 1.5,
+        "volatility_relative_threshold": 1.5,
+        "block_high_impact_news": True,
+        "stop_loss_buffer": 0.0002,
+        "weights": weights,
+    }
+    values.update(overrides)
+    return AnalysisConfig(**values)  # type: ignore[arg-type]
 
 
 def _system_config() -> SystemConfig:
@@ -72,8 +95,9 @@ def _system_config() -> SystemConfig:
             max_open_positions_per_instance=1,
             max_daily_loss_percent=2.0,
             max_drawdown_percent=10.0,
+            reward_ratio=2.0,
         ),
-        analysis=AnalysisConfig(lookback_bars=120),
+        analysis=_analysis_config(),
         journal=JournalConfig(retention_days=30),
         dashboard=DashboardConfig(refresh_interval_ms=1000),
         logging=LoggingConfig(level="INFO", format="standard"),
@@ -177,8 +201,13 @@ def test_system_config_rejects_duplicate_instances() -> None:
                 auto_discover_instances=True,
             ),
             instances=(instance, instance),
-            risk=RiskConfig(1, 2.0, 10.0),
-            analysis=AnalysisConfig(120),
+            risk=RiskConfig(
+                max_open_positions_per_instance=1,
+                max_daily_loss_percent=2.0,
+                max_drawdown_percent=10.0,
+                reward_ratio=2.0,
+            ),
+            analysis=_analysis_config(),
             journal=JournalConfig(30),
             dashboard=DashboardConfig(1000),
             logging=LoggingConfig("INFO", "standard"),

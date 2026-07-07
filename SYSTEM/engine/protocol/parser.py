@@ -17,6 +17,7 @@ from engine.protocol.errors import ProtocolError, ValidationError
 from engine.protocol.models import (
     AckRecord,
     AnalysisConfig,
+    AnalysisWeights,
     ControlCommand,
     DashboardConfig,
     DecisionJournalEntry,
@@ -276,6 +277,27 @@ def _check_universe_root_fields(data: dict[str, Any]) -> None:
             )
 
 
+def _parse_analysis_weights(analysis_data: dict[str, Any]) -> AnalysisWeights:
+    weights_data = _require_key(analysis_data, "weights", "system_config")
+    if not isinstance(weights_data, dict):
+        raise _protocol_error(
+            "analysis.weights must be an object",
+            field="analysis.weights",
+            value_type=type(weights_data).__name__,
+        )
+    return _build_model(
+        AnalysisWeights,
+        "system_config",
+        momentum=_require_key(weights_data, "momentum", "system_config"),
+        trend=_require_key(weights_data, "trend", "system_config"),
+        structure=_require_key(weights_data, "structure", "system_config"),
+        pressure=_require_key(weights_data, "pressure", "system_config"),
+        behavior=_require_key(weights_data, "behavior", "system_config"),
+        impact=_require_key(weights_data, "impact", "system_config"),
+        context=_require_key(weights_data, "context", "system_config"),
+    )
+
+
 def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
     payload = _ensure_mapping(data, "system_config")
     schema_version = _validate_schema_version(
@@ -438,11 +460,29 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
                 "max_drawdown_percent",
                 "system_config",
             ),
+            reward_ratio=_require_key(risk_data, "reward_ratio", "system_config"),
         ),
         analysis=_build_model(
             AnalysisConfig,
             "system_config",
             lookback_bars=_require_key(analysis_data, "lookback_bars", "system_config"),
+            spread_relative_threshold=_require_key(
+                analysis_data,
+                "spread_relative_threshold",
+                "system_config",
+            ),
+            volatility_relative_threshold=_require_key(
+                analysis_data,
+                "volatility_relative_threshold",
+                "system_config",
+            ),
+            block_high_impact_news=_require_key(
+                analysis_data,
+                "block_high_impact_news",
+                "system_config",
+            ),
+            stop_loss_buffer=_require_key(analysis_data, "stop_loss_buffer", "system_config"),
+            weights=_parse_analysis_weights(analysis_data),
         ),
         journal=_build_model(
             JournalConfig,
