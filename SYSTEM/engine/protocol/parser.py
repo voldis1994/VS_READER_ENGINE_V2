@@ -574,6 +574,12 @@ def parse_instance_state(data: dict[str, Any] | str) -> InstanceStateRecord:
         "magic": _require_key(payload, "magic", "instance_state"),
         "last_decision": _require_key(payload, "last_decision", "instance_state"),
         "last_reason": _require_key(payload, "last_reason", "instance_state"),
+        "last_command_id": _require_key(payload, "last_command_id", "instance_state"),
+        "last_ack_status": _require_key(payload, "last_ack_status", "instance_state"),
+        "instrument_digits": _require_key(payload, "instrument_digits", "instance_state"),
+        "instrument_point": _require_key(payload, "instrument_point", "instance_state"),
+        "instrument_pip": _require_key(payload, "instrument_pip", "instance_state"),
+        "cycle_count": _require_key(payload, "cycle_count", "instance_state"),
         "last_cycle_utc": _require_key(payload, "last_cycle_utc", "instance_state"),
     }
     for optional in ("open_ticket", "position_side", "position_volume"):

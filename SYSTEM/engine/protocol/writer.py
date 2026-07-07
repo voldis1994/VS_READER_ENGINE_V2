@@ -266,6 +266,12 @@ INSTANCE_STATE_REQUIRED_FIELDS: tuple[str, ...] = (
     "magic",
     "last_decision",
     "last_reason",
+    "last_command_id",
+    "last_ack_status",
+    "instrument_digits",
+    "instrument_point",
+    "instrument_pip",
+    "cycle_count",
     "last_cycle_utc",
 )
 

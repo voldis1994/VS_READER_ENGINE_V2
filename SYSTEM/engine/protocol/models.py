@@ -9,6 +9,7 @@ from engine.protocol.identity import (
     validate_symbol as _shared_validate_symbol,
 )
 from engine.protocol.constants import (
+    AckStatus,
     ErrorType,
     LogLevel,
     MarketRegime,
@@ -737,6 +738,12 @@ class InstanceStateRecord:
     magic: int
     last_decision: str
     last_reason: str
+    last_command_id: str
+    last_ack_status: str
+    instrument_digits: int
+    instrument_point: float
+    instrument_pip: float
+    cycle_count: int
     last_cycle_utc: str
     open_ticket: int | None = None
     position_side: str | None = None
@@ -763,6 +770,41 @@ class InstanceStateRecord:
             )
         object.__setattr__(self, "last_decision", last_decision)
         object.__setattr__(self, "last_reason", _require_non_empty_string(self.last_reason, "last_reason"))
+        if not isinstance(self.last_command_id, str):
+            raise ValidationError(
+                "last_command_id must be a string",
+                module="protocol.models",
+                context={"value_type": type(self.last_command_id).__name__},
+            )
+        object.__setattr__(self, "last_command_id", self.last_command_id)
+        last_ack_status = _require_non_empty_string(self.last_ack_status, "last_ack_status")
+        if last_ack_status not in AckStatus._value2member_map_:
+            raise ValidationError(
+                "last_ack_status is invalid",
+                module="protocol.models",
+                context={"value": last_ack_status},
+            )
+        object.__setattr__(self, "last_ack_status", last_ack_status)
+        instrument_digits = _require_int(self.instrument_digits, "instrument_digits", minimum=0)
+        object.__setattr__(self, "instrument_digits", instrument_digits)
+        instrument_point = _require_number(self.instrument_point, "instrument_point")
+        if instrument_point < 0:
+            raise ValidationError(
+                "instrument_point must be >= 0",
+                module="protocol.models",
+                context={"value": instrument_point},
+            )
+        object.__setattr__(self, "instrument_point", instrument_point)
+        instrument_pip = _require_number(self.instrument_pip, "instrument_pip")
+        if instrument_pip < 0:
+            raise ValidationError(
+                "instrument_pip must be >= 0",
+                module="protocol.models",
+                context={"value": instrument_pip},
+            )
+        object.__setattr__(self, "instrument_pip", instrument_pip)
+        cycle_count = _require_int(self.cycle_count, "cycle_count", minimum=0)
+        object.__setattr__(self, "cycle_count", cycle_count)
         object.__setattr__(self, "last_cycle_utc", _require_non_empty_string(self.last_cycle_utc, "last_cycle_utc"))
         if self.open_ticket is not None:
             object.__setattr__(self, "open_ticket", _require_int(self.open_ticket, "open_ticket", minimum=0))
@@ -794,6 +836,12 @@ class InstanceStateRecord:
             "magic": self.magic,
             "last_decision": self.last_decision,
             "last_reason": self.last_reason,
+            "last_command_id": self.last_command_id,
+            "last_ack_status": self.last_ack_status,
+            "instrument_digits": self.instrument_digits,
+            "instrument_point": self.instrument_point,
+            "instrument_pip": self.instrument_pip,
+            "cycle_count": self.cycle_count,
             "last_cycle_utc": self.last_cycle_utc,
         }
         if self.open_ticket is not None:

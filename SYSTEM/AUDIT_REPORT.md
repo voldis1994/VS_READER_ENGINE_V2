@@ -8,13 +8,12 @@
 
 ## Kopsavilkums
 
-Audits **nav pilnībā iziets**. Atrastas vairākas būtiskas neatbilstības P21–P30 implementācijā, kas ietekmē:
+Audits **nav pilnībā iziets**. Atrastas būtiskas neatbilstības P27–P28 implementācijā, kas ietekmē:
 
-- atbilstību specifikācijas cache/journal/state principiem,
-- publiskā API konsekvenci starp `state` un `protocol`,
+- atbilstību specifikācijas cache/journal principiem,
 - dead code/dublēšanas risku.
 
-Kritiskākie punkti: `core/cache.py` faktiski nav integrēts darba plūsmā, `error_journal` nav reāli append-only implementācijas ziņā, un `instance_state` formāts ir nekonsekvents ar esošo protocol state API.
+Kritiskākie punkti: `core/cache.py` faktiski nav integrēts darba plūsmā un `error_journal` nav reāli append-only implementācijas ziņā.
 
 ---
 
@@ -76,26 +75,7 @@ Kritiskākie punkti: `core/cache.py` faktiski nav integrēts darba plūsmā, `er
 
 ---
 
-## A4. P25 `instance_state` publiskais API nav konsekvents ar protocol state API
-
-**Smagums:** Augsts  
-**Spec/Plāns:** `IMPLEMENTATION_PLAN.md` P25; `SYSTEM_SPECIFICATION.md` §19.6 un §72.3; publiskā API konsekvence
-
-### Pierādījumi
-
-- `engine/state/instance_state.py` raksta state ar papildu laukiem:
-  - `last_command_id`, `last_ack_status`, `instrument_digits`, `instrument_point`, `instrument_pip`, `cycle_count`.
-- `engine/protocol/models.py::InstanceStateRecord` / `parse_instance_state` / `write_instance_state` šos laukus neaptver kā vienotu modeli.
-- Tātad vienā repo pastāv 2 daļēji atšķirīgi “instance state” kontrakti.
-
-### Sekas
-
-- Nekonsekvents publiskais API starp `state` un `protocol` slāņiem.
-- Palielināts risks nākamajiem moduļiem (daži izmantos `state.InstanceState`, citi `protocol.InstanceStateRecord`).
-
----
-
-## A5. BUY/SELL/WAIT/EDGE arhitektūras gatavība: daļēja, bet nav degradēta uz “parastu MT4 robotu”
+## A4. BUY/SELL/WAIT/EDGE arhitektūras gatavība: daļēja, bet nav degradēta uz “parastu MT4 robotu”
 
 **Smagums:** Novērojums (ne bloķējošs)
 
@@ -116,10 +96,10 @@ Kritiskākie punkti: `core/cache.py` faktiski nav integrēts darba plūsmā, `er
 - Cikliskas atkarības acīmredzami netika konstatētas auditētajā P01–P30 modulī.
 - `protocol/__init__.py` publiskais eksports ir plašs un konsekvents.
 - `analysis` slānis šobrīd nav sācis tieši tirgot.
-- Testu kopa lokāli iziet, taču tests šobrīd nepietiekami noķer A1–A4 arhitektūras driftu.
+- Testu kopa lokāli iziet, taču tests šobrīd nepietiekami noķer A1–A3 arhitektūras driftu.
 
 ---
 
 ## Kopējais secinājums
 
-P01–P30 audits atklāj būtiskas arhitektūras neatbilstības (A1–A4), tāpēc rezultāts nav “pilnībā iziets”.
+P01–P30 audits atklāj būtiskas arhitektūras neatbilstības (A1–A3), tāpēc rezultāts nav “pilnībā iziets”.

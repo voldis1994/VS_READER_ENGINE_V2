@@ -268,6 +268,12 @@ def test_instance_state_record_required_fields() -> None:
         magic=100001,
         last_decision="WAIT",
         last_reason="EQUAL_SCORES",
+        last_command_id="cmd-1",
+        last_ack_status="TIMEOUT",
+        instrument_digits=5,
+        instrument_point=0.00001,
+        instrument_pip=0.0001,
+        cycle_count=1,
         last_cycle_utc="2026-07-07T06:00:00.000Z",
     )
     assert record.instance_key.symbol == "EURUSD"
