@@ -11,6 +11,7 @@ from engine.core.paths import (
 )
 from engine.core.clock import format_utc_timestamp, now_utc, utc_now
 from engine.core.instance import Instance, ensure_unique_instance_keys
+from engine.core.config import load_system_config, parse_config_payload
 
 __all__ = [
     "format_utc_timestamp",
@@ -27,4 +28,6 @@ __all__ = [
     "SystemPaths",
     "Instance",
     "ensure_unique_instance_keys",
+    "load_system_config",
+    "parse_config_payload",
 ]
