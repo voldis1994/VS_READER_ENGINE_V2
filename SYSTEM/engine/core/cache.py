@@ -32,8 +32,13 @@ def should_reload(source_path: Path, hash_path: Path, raw_text: str) -> bool:
     current_mtime_ns = source_path.stat().st_mtime_ns
     cached = parse_hash_record(atomic_read_text(hash_path))
 
-    # Content hash has priority over file modified time conflicts.
-    return cached["hash"] != current_hash
+    if cached["hash"] != current_hash:
+        return True
+    cached_mtime_ns = int(cached["modified_ns"])
+    if cached_mtime_ns != current_mtime_ns:
+        # Content hash has priority over modified-time conflicts.
+        return False
+    return False
 
 
 def write_hash(source_path: Path, hash_path: Path, raw_text: str) -> None:

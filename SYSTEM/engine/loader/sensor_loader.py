@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import MutableMapping
 
 from engine.core.atomic_io import atomic_read_text
+from engine.core.cache import (
+    build_sensor_hash_path,
+    content_hash,
+    should_reload,
+    write_hash,
+)
 from engine.core.clock import format_utc_timestamp
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
@@ -42,10 +47,6 @@ def _extract_rows(raw_text: str) -> tuple[tuple[str, ...], str | None]:
     return history, history[-1]
 
 
-def _content_hash(raw_text: str) -> str:
-    return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
-
-
 def load_sensor_data(
     paths: SystemPaths,
     instance: Instance,
@@ -64,9 +65,28 @@ def load_sensor_data(
             and cached.modified_ns == stat.st_mtime_ns
         ):
             return cached.data
+        if cached is not None and stat is not None:
+            hash_path = build_sensor_hash_path(paths, instance)
+            if hash_path.exists() and not should_reload(file_path, hash_path, cached.data.raw_text):
+                data = RawSensorData(
+                    file_path=file_path,
+                    modified_utc=format_utc_timestamp(datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)),
+                    row_count=cached.data.row_count,
+                    raw_text=cached.data.raw_text,
+                    history_rows=cached.data.history_rows,
+                    last_row=cached.data.last_row,
+                )
+                cache[cache_key] = _CacheEntry(
+                    file_size=stat.st_size,
+                    modified_ns=stat.st_mtime_ns,
+                    content_hash=content_hash(cached.data.raw_text),
+                    data=data,
+                )
+                return data
 
     raw_text = atomic_read_text(file_path)
     stat = file_path.stat()
+    write_hash(file_path, build_sensor_hash_path(paths, instance), raw_text)
     history_rows, last_row = _extract_rows(raw_text)
     data = RawSensorData(
         file_path=file_path,
@@ -80,7 +100,7 @@ def load_sensor_data(
         cache[cache_key] = _CacheEntry(
             file_size=stat.st_size,
             modified_ns=stat.st_mtime_ns,
-            content_hash=_content_hash(raw_text),
+            content_hash=content_hash(raw_text),
             data=data,
         )
     return data
