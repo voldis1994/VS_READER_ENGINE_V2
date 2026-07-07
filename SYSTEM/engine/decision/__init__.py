@@ -21,14 +21,24 @@ from engine.decision.sell import (
     calculate_sell_candidate,
     calculate_sell_score,
 )
+from engine.decision.wait_block import (
+    BlockDecisionResult,
+    WaitDecisionResult,
+    build_both_directions_invalid_reason,
+    evaluate_block_decision,
+    evaluate_wait_decision,
+)
 
 __all__ = [
+    "BlockDecisionResult",
     "BuyCandidate",
     "NewsFilterResult",
     "ScoringResult",
     "SellCandidate",
     "SpreadFilterResult",
     "VolatilityFilterResult",
+    "WaitDecisionResult",
+    "build_both_directions_invalid_reason",
     "build_buy_component_scores",
     "build_reason",
     "build_sell_component_scores",
@@ -38,8 +48,10 @@ __all__ = [
     "calculate_sell_candidate",
     "calculate_sell_score",
     "compare_candidates",
+    "evaluate_block_decision",
     "evaluate_news_filter",
     "evaluate_spread_filter",
     "evaluate_volatility_filter",
+    "evaluate_wait_decision",
     "resolve_preferred_side",
 ]
