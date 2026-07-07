@@ -265,8 +265,11 @@ def run_live_main(
     if wait_for_shutdown is not None:
         wait_for_shutdown(runtime)
     else:
+        from engine.core.orchestrator import run_runtime_cycles
+
         interval_seconds = runtime.config.runtime.cycle_interval_ms / 1000.0
         while not runtime.shutdown_requested:
+            run_runtime_cycles(runtime)
             time.sleep(interval_seconds)
 
     return shutdown(runtime)
