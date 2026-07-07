@@ -6,11 +6,12 @@ from typing import Any, MutableMapping
 import time
 
 from engine.analysis.structure import StructureAnalysis, analyze_structure
-from engine.core.clock import now_utc
+from engine.core.clock import format_utc_timestamp, now_utc
 from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.paths import SystemPaths
 from engine.core.performance import CycleTimingSnapshot, monotonic_elapsed_ms
+from engine.core.retry import RetryPolicy, build_retry_policy
 from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.execution.engine import ExecutionResult, run_execution_engine
 from engine.journal.decision_journal import log_decision
@@ -27,6 +28,8 @@ from engine.protocol.constants import (
     ErrorType,
     OrderAction,
     REASON_ACCOUNT_NOT_TRADEABLE,
+    REASON_CYCLE_TIMEOUT,
+    REASON_DATA_INVALID,
     RiskResult,
     Side,
 )
@@ -50,14 +53,10 @@ from engine.validator.universe_validator import validate_universe_json
 
 MODULE_NAME = "core.cycle"
 
-DEFAULT_MAX_RISK_PER_TRADE_PERCENT = 1.0
-DEFAULT_VOLUME_STEP = 0.01
-DEFAULT_MAX_STOP_LOSS_PIPS = 100.0
 DEFAULT_BREAKEVEN_PROGRESS_RATIO = 0.5
 DEFAULT_PARTIAL_CLOSE_PROGRESS_RATIO = 0.75
 DEFAULT_PARTIAL_CLOSE_VOLUME_RATIO = 0.5
 DEFAULT_TIME_STOP_MAX_BARS = 120
-DEFAULT_POSITION_BARS_OPEN = 1
 
 
 @dataclass(frozen=True)
@@ -116,7 +115,8 @@ def resolve_open_position_from_state(instance_state: InstanceState) -> OpenPosit
         stop_loss=instance_state.position_stop_loss,
         take_profit=instance_state.position_take_profit,
         volume=instance_state.position_volume,
-        bars_open=DEFAULT_POSITION_BARS_OPEN,
+        bars_open=instance_state.position_bars_open,
+        partial_close_applied=instance_state.partial_close_applied,
     )
 
 
@@ -127,7 +127,9 @@ def run_instance_trade_management_phase(
     runtime: LiveRuntime,
     trade_params: RiskEngineTradeParams | None = None,
 ) -> TradeManagementResult:
-    resolved_trade_params = trade_params or build_risk_trade_params()
+    resolved_trade_params = trade_params or build_risk_trade_params(runtime)
+    if instance_memory.instance_state.open_ticket is not None:
+        instance_memory.instance_state.increment_position_bars()
     position = resolve_open_position_from_state(instance_memory.instance_state)
     structure = resolve_structure_levels(market_bars)
     digits = instance_memory.instance_state.instrument_digits
@@ -151,11 +153,12 @@ def should_execute_management_action(order_action: str) -> bool:
     return order_action in {OrderAction.MODIFY.value, OrderAction.CLOSE.value}
 
 
-def build_risk_trade_params() -> RiskEngineTradeParams:
+def build_risk_trade_params(runtime: LiveRuntime) -> RiskEngineTradeParams:
+    risk = runtime.config.risk
     return RiskEngineTradeParams(
-        max_risk_per_trade_percent=DEFAULT_MAX_RISK_PER_TRADE_PERCENT,
-        volume_step=DEFAULT_VOLUME_STEP,
-        max_stop_loss_pips=DEFAULT_MAX_STOP_LOSS_PIPS,
+        max_risk_per_trade_percent=risk.max_risk_per_trade_percent,
+        volume_step=risk.volume_step,
+        max_stop_loss_pips=risk.max_stop_loss_pips,
     )
 
 
@@ -169,6 +172,7 @@ def load_instance_cycle_data(
     *,
     use_global_universe: bool | None = None,
     cache: MutableMapping[str, Any] | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> InstanceCycleData:
     resolved_use_global = (
         resolve_use_global_universe(paths)
@@ -176,14 +180,20 @@ def load_instance_cycle_data(
         else use_global_universe
     )
     return InstanceCycleData(
-        market_raw=load_market_data(paths, instance, cache=cache),
-        sensor_raw=load_sensor_data(paths, instance, cache=cache),
-        status_raw=load_status_data(paths, instance.account_id, cache=cache),
+        market_raw=load_market_data(paths, instance, cache=cache, retry_policy=retry_policy),
+        sensor_raw=load_sensor_data(paths, instance, cache=cache, retry_policy=retry_policy),
+        status_raw=load_status_data(
+            paths,
+            instance.account_id,
+            cache=cache,
+            retry_policy=retry_policy,
+        ),
         universe_raw=load_universe_data(
             paths,
             instance.account_id,
             use_global_universe=resolved_use_global,
             cache=cache,
+            retry_policy=retry_policy,
         ),
     )
 
@@ -315,7 +325,7 @@ def run_instance_risk_phase(
         risk_config=runtime.config.risk,
         instance_state=instance_memory.instance_state,
         status=status,
-        trade_params=trade_params or build_risk_trade_params(),
+        trade_params=trade_params or build_risk_trade_params(runtime),
         swing_low=structure.swing_low,
         swing_high=structure.swing_high,
     )
@@ -367,6 +377,53 @@ def _build_cycle_timings(
     )
 
 
+def _log_stale_data_skip(
+    paths: SystemPaths,
+    instance: Instance,
+    *,
+    market_freshness_ms: int,
+    sensor_freshness_ms: int,
+    threshold_ms: int,
+) -> None:
+    log_error(
+        paths,
+        instance,
+        module=MODULE_NAME,
+        error_type=ErrorType.VALIDATION.value,
+        message="cycle skipped due to stale market or sensor data",
+        context={
+            "reason": REASON_DATA_INVALID,
+            "market_freshness_ms": market_freshness_ms,
+            "sensor_freshness_ms": sensor_freshness_ms,
+            "threshold_ms": threshold_ms,
+        },
+    )
+
+
+def _enforce_cycle_duration_limit(
+    *,
+    runtime: LiveRuntime,
+    instance: Instance,
+    cycle_duration_ms: int,
+) -> bool:
+    limit_ms = runtime.config.runtime.cycle_max_duration_ms
+    if cycle_duration_ms <= limit_ms:
+        return False
+    log_error(
+        runtime.paths,
+        instance,
+        module=MODULE_NAME,
+        error_type=ErrorType.PROTOCOL.value,
+        message="cycle exceeded configured maximum duration",
+        context={
+            "reason": REASON_CYCLE_TIMEOUT,
+            "cycle_duration_ms": cycle_duration_ms,
+            "cycle_max_duration_ms": limit_ms,
+        },
+    )
+    return True
+
+
 def _finalize_cycle_state(
     *,
     instance_memory: InstanceMemory,
@@ -395,6 +452,10 @@ def run_instance_cycle(
 ) -> InstanceCycleResult:
     resolved_timestamp = timestamp_utc or now_utc()
     instance_memory = runtime.memory.get_or_create(instance)
+    from engine.core.recovery import sync_instance_state
+
+    sync_instance_state(runtime, instance)
+    retry_policy = build_retry_policy(runtime.config.runtime)
     cycle_started = time.monotonic()
     load_started = time.monotonic()
     load_duration_ms = 0
@@ -419,6 +480,7 @@ def run_instance_cycle(
             instance,
             use_global_universe=use_global_universe,
             cache=cache,
+            retry_policy=retry_policy,
         )
     except DataIOError as exc:
         _log_cycle_error(
@@ -467,6 +529,31 @@ def run_instance_cycle(
             error_logged=True,
         )
     sensor_reading = sensor_result
+
+    stale_threshold_ms = runtime.config.runtime.data_stale_threshold_ms
+    from engine.core.monitoring import compute_data_freshness_ms, is_data_stale
+
+    market_data_utc = format_utc_timestamp(market_bars[-1].time_utc)
+    sensor_data_utc = sensor_reading.time_utc
+    market_freshness_ms = compute_data_freshness_ms(market_data_utc, resolved_timestamp)
+    sensor_freshness_ms = compute_data_freshness_ms(sensor_data_utc, resolved_timestamp)
+    if is_data_stale(market_freshness_ms, stale_threshold_ms) or is_data_stale(
+        sensor_freshness_ms,
+        stale_threshold_ms,
+    ):
+        _log_stale_data_skip(
+            runtime.paths,
+            instance,
+            market_freshness_ms=market_freshness_ms,
+            sensor_freshness_ms=sensor_freshness_ms,
+            threshold_ms=stale_threshold_ms,
+        )
+        return _cycle_result(
+            instance=instance,
+            timestamp_utc=resolved_timestamp,
+            completed=False,
+            error_logged=True,
+        )
 
     status_result = validate_status_for_cycle(loaded.status_raw)
     if not status_result.is_valid or status_result.record is None:
@@ -548,7 +635,7 @@ def run_instance_cycle(
         timestamp_utc=resolved_timestamp,
     )
 
-    resolved_trade_params = trade_params or build_risk_trade_params()
+    resolved_trade_params = trade_params or build_risk_trade_params(runtime)
     management_result = run_instance_trade_management_phase(
         instance_memory=instance_memory,
         market_bars=market_bars,
@@ -592,15 +679,28 @@ def run_instance_cycle(
         timestamp_utc=resolved_timestamp,
     )
 
-    return _cycle_result(
+    timings = _build_cycle_timings(
+        cycle_started=cycle_started,
+        load_duration_ms=load_duration_ms,
+        analysis_duration_ms=analysis_duration_ms,
+        decision_duration_ms=decision_duration_ms,
+    )
+    cycle_timeout_logged = _enforce_cycle_duration_limit(
+        runtime=runtime,
+        instance=instance,
+        cycle_duration_ms=timings.cycle_duration_ms,
+    )
+
+    return InstanceCycleResult(
         instance=instance,
         timestamp_utc=resolved_timestamp,
-        completed=True,
-        error_logged=False,
+        completed=not cycle_timeout_logged,
+        error_logged=cycle_timeout_logged,
         decision_result=decision_result,
         risk_engine_result=risk_engine_result,
         decision_journal_logged=True,
         execution_result=execution_result,
         trade_executed=trade_executed,
         ack_latency_ms=ack_latency_ms,
+        performance_timings=timings,
     )

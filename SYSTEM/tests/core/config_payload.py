@@ -4,6 +4,8 @@ from typing import Any
 
 from engine.protocol.constants import CONFIG_SCHEMA_VERSION
 
+FIXTURE_CYCLE_UTC = "2026-07-07T06:02:00.000Z"
+
 
 def valid_system_config_payload() -> dict[str, Any]:
     return {
@@ -43,6 +45,9 @@ def valid_system_config_payload() -> dict[str, Any]:
             "max_daily_loss_percent": 2.0,
             "max_drawdown_percent": 10.0,
             "reward_ratio": 2.0,
+            "max_risk_per_trade_percent": 1.0,
+            "max_stop_loss_pips": 100.0,
+            "volume_step": 0.01,
         },
         "analysis": {
             "lookback_bars": 120,

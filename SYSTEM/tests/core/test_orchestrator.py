@@ -29,7 +29,7 @@ from engine.protocol.constants import ErrorType, PROTOCOL_SCHEMA_VERSION
 from engine.protocol.parser import parse_decision_journal_line, parse_error_journal_line
 from engine.state.instance_state import InstanceState
 from engine.state.spread_state import SpreadState
-from tests.core.config_payload import valid_system_config_payload
+from tests.core.config_payload import FIXTURE_CYCLE_UTC, valid_system_config_payload
 
 
 FIXTURES_DIR = Path(__file__).parent.parent / "loader" / "fixtures"
@@ -235,7 +235,11 @@ def test_run_runtime_cycles_returns_empty_result_when_shutdown_requested(tmp_pat
     runtime = _startup_runtime(tmp_path, install_fixtures=[instance])
     runtime.shutdown_requested = True
 
-    result = run_runtime_cycles(runtime, use_global_universe=False)
+    result = run_runtime_cycles(
+        runtime,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.instance_results == ()
     assert result.completed_count == 0
     assert result.failed_count == 0
@@ -263,7 +267,11 @@ def test_two_instances_one_account_have_isolated_state_and_journal(tmp_path: Pat
         install_fixtures=[instance_a, instance_b],
     )
 
-    result = run_runtime_cycles(runtime, use_global_universe=False)
+    result = run_runtime_cycles(
+        runtime,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.instance_count == 2
     assert result.completed_count == 2
 
@@ -306,7 +314,11 @@ def test_two_accounts_use_isolated_paths(tmp_path: Path) -> None:
         install_fixtures=[instance_a, instance_b],
     )
 
-    result = run_runtime_cycles(runtime, use_global_universe=False)
+    result = run_runtime_cycles(
+        runtime,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.completed_count == 2
 
     journal_dir_a = runtime.paths.account_journal_dir("12345")
@@ -349,6 +361,7 @@ def test_one_instance_failure_does_not_stop_other_instance(tmp_path: Path) -> No
         runtime,
         instances=(bad_instance, good_instance),
         use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
     )
     assert result.instance_count == 2
     assert result.completed_count == 1
@@ -409,7 +422,11 @@ def test_auto_discover_instances_registers_new_instance_for_runtime_cycles(tmp_p
     paths.ensure_account_directories("12345")
     _install_valid_fixtures(paths, discovered)
 
-    result = run_runtime_cycles(runtime, use_global_universe=False)
+    result = run_runtime_cycles(
+        runtime,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.instance_count == 2
     assert result.completed_count == 2
     assert runtime.memory.get(discovered) is not None

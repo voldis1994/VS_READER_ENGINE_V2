@@ -18,6 +18,7 @@ from engine.core.paths import SystemPaths
 from engine.normalizer.spread_model import SpreadModelSnapshot
 from engine.protocol.constants import FILENAME_STATUS
 from engine.protocol.errors import ConfigurationError
+from engine.protocol.identity import validate_account_id
 from engine.protocol.models import SpreadStateRecord, SystemConfig
 from engine.protocol.parser import parse_status
 from engine.state.instance_state import InstanceState
@@ -93,6 +94,7 @@ def discover_instances(config: SystemConfig, paths: SystemPaths) -> tuple[Instan
         for account_dir in sorted(paths.clients_dir.iterdir()):
             if not account_dir.is_dir():
                 continue
+            validate_account_id(account_dir.name, MODULE_NAME)
             for instance in discover_instances_from_account(paths, account_dir.name):
                 discovered[instance.instance_key] = instance
 

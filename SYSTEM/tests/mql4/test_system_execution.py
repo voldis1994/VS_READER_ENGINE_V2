@@ -291,6 +291,8 @@ def test_close_position_executes_for_known_ticket() -> None:
 def test_system_execute_close_function_uses_order_close(execution_source: str) -> None:
     body = mql_source.function_body(execution_source, "SYSTEM_ExecuteClose")
     assert "OrderClose" in body
+    assert "command.has_volume" in body
+    assert "command.volume" in body
 
 
 def test_close_unknown_ticket_is_rejected() -> None:

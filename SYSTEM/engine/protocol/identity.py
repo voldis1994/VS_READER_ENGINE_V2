@@ -3,6 +3,27 @@ from __future__ import annotations
 from engine.protocol.errors import ValidationError
 
 
+def _reject_unsafe_identity_value(value: str, field_name: str, module_name: str) -> None:
+    if ".." in value:
+        raise ValidationError(
+            f"{field_name} must not contain path traversal sequences",
+            module=module_name,
+            context={"field": field_name, "value": value},
+        )
+    if "/" in value or "\\" in value:
+        raise ValidationError(
+            f"{field_name} must not contain path separators",
+            module=module_name,
+            context={"field": field_name, "value": value},
+        )
+    if any(ord(character) < 32 for character in value):
+        raise ValidationError(
+            f"{field_name} must not contain control characters",
+            module=module_name,
+            context={"field": field_name},
+        )
+
+
 def validate_account_id(account_id: str, module_name: str) -> str:
     if not isinstance(account_id, str):
         raise ValidationError(
@@ -17,6 +38,7 @@ def validate_account_id(account_id: str, module_name: str) -> str:
             module=module_name,
             context={"field": "account_id"},
         )
+    _reject_unsafe_identity_value(value, "account_id", module_name)
     return value
 
 
@@ -34,6 +56,7 @@ def validate_symbol(symbol: str, module_name: str) -> str:
             module=module_name,
             context={"field": "symbol"},
         )
+    _reject_unsafe_identity_value(value, "symbol", module_name)
     return value
 
 

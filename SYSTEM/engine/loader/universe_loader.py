@@ -9,6 +9,7 @@ from typing import MutableMapping
 from engine.core.atomic_io import atomic_read_text
 from engine.core.clock import format_utc_timestamp
 from engine.core.paths import SystemPaths
+from engine.core.retry import RetryPolicy
 from engine.protocol.constants import FILENAME_UNIVERSE
 
 
@@ -48,6 +49,7 @@ def load_universe_data(
     *,
     use_global_universe: bool,
     cache: MutableMapping[str, _CacheEntry] | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> RawUniverseData:
     file_path = build_universe_file_path(
         paths,
@@ -66,7 +68,7 @@ def load_universe_data(
         ):
             return cached.data
 
-    raw_text = atomic_read_text(file_path)
+    raw_text = atomic_read_text(file_path, retry_policy=retry_policy)
     stat = file_path.stat()
     data = RawUniverseData(
         file_path=file_path,

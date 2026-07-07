@@ -18,9 +18,10 @@ from engine.execution.ack_reader import (
 )
 from engine.execution.command import OrderCommand
 from engine.execution.control_writer import build_control_path
-from engine.execution.engine import apply_ack_to_instance_state, log_ack_failure
+from engine.loader.market_loader import load_market_data
 from engine.loader.sensor_loader import load_sensor_data
 from engine.loader.status_loader import load_status_data
+from engine.normalizer.market_normalizer import normalize_market_csv
 from engine.normalizer.spread_model import SpreadModelSnapshot, update_spread_model_from_sensor
 from engine.protocol.constants import AckStatus, OrderAction, ValidationStatus
 from engine.protocol.errors import SystemError
@@ -28,6 +29,7 @@ from engine.protocol.models import ControlCommand, StatusRecord
 from engine.protocol.parser import parse_control, parse_sensor_csv
 from engine.state.instance_state import InstanceState
 from engine.state.spread_state import SpreadState
+from engine.validator.market_validator import validate_market_csv
 from engine.validator.sensor_validator import validate_sensor_csv
 from engine.validator.status_validator import validate_status_json
 
@@ -116,6 +118,26 @@ def reload_instance_state_from_disk(runtime: LiveRuntime, instance: Instance) ->
     return True
 
 
+def sync_instance_state(runtime: LiveRuntime, instance: Instance) -> bool:
+    item = runtime.memory.get_or_create(instance)
+    item.instance_state = InstanceState.load(runtime.paths, instance)
+    return True
+
+
+def resolve_recovery_entry_price_for_open(runtime: LiveRuntime, instance: Instance) -> float | None:
+    try:
+        market_raw = load_market_data(runtime.paths, instance)
+    except SystemError:
+        return None
+    validation = validate_market_csv(market_raw.raw_text)
+    if not validation.is_valid:
+        return None
+    market_bars = normalize_market_csv(market_raw.raw_text)
+    if not market_bars:
+        return None
+    return market_bars[-1].close
+
+
 def detect_unconfirmed_control(
     paths: SystemPaths,
     instance: Instance,
@@ -172,11 +194,6 @@ def recover_pending_ack(
         return AckRecoveryResult(recovered=False, timed_out=False)
 
     command_id = resolved_unconfirmed.control.command_id
-    if (
-        instance_state.last_command_id == command_id
-        and instance_state.last_ack_status == AckStatus.TIMEOUT.value
-    ):
-        return AckRecoveryResult(recovered=False, timed_out=False, command_id=command_id)
 
     ack_path = build_ack_path(runtime.paths, instance)
     if ack_path.exists():
@@ -189,11 +206,27 @@ def recover_pending_ack(
         except SystemError:
             ack_record = None
         else:
+            from engine.execution.engine import apply_ack_to_instance_state, log_ack_failure
+
             order_command = order_command_from_control(resolved_unconfirmed.control)
+            entry_price = None
+            if order_command.action == OrderAction.OPEN.value:
+                entry_price = resolve_recovery_entry_price_for_open(runtime, instance)
             log_ack_failure(runtime.paths, instance, ack_record)
-            apply_ack_to_instance_state(instance_state, order_command, ack_record)
+            apply_ack_to_instance_state(
+                instance_state,
+                order_command,
+                ack_record,
+                entry_price=entry_price,
+            )
             interpret_ack(ack_record)
             return AckRecoveryResult(recovered=True, timed_out=False, command_id=command_id)
+
+    if (
+        instance_state.last_command_id == command_id
+        and instance_state.last_ack_status == AckStatus.TIMEOUT.value
+    ):
+        return AckRecoveryResult(recovered=False, timed_out=False, command_id=command_id)
 
     resolved_timestamp = timestamp_utc or now_utc()
     log_ack_timeout(runtime.paths, instance, command_id=command_id)

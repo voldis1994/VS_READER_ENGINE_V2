@@ -86,7 +86,7 @@ Augstāki slāņi neapiet validāciju un analīzi. Dashboard neimportē `analysi
 |---------|------|
 | `core/lifecycle.py` | Startup/shutdown, memory, spread modeli |
 | `core/orchestrator.py` | Multi-instance cikli |
-| `core/recovery.py` | Startup un cikla recovery |
+| `core/recovery.py` | Startup recovery, late ACK, vieglā state sync cikla sākumā |
 | `core/monitoring.py` | Instance monitoring |
 | `core/alerts.py` | Alerti |
 | `core/performance.py` | Cikla ilguma metrikas |

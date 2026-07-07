@@ -461,6 +461,13 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
                 "system_config",
             ),
             reward_ratio=_require_key(risk_data, "reward_ratio", "system_config"),
+            max_risk_per_trade_percent=_require_key(
+                risk_data,
+                "max_risk_per_trade_percent",
+                "system_config",
+            ),
+            max_stop_loss_pips=_require_key(risk_data, "max_stop_loss_pips", "system_config"),
+            volume_step=_require_key(risk_data, "volume_step", "system_config"),
         ),
         analysis=_build_model(
             AnalysisConfig,

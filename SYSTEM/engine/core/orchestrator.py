@@ -149,15 +149,6 @@ def run_runtime_cycles(
     monitoring_state = MonitoringState()
     performance_state = PerformanceState()
 
-    from engine.core.recovery import run_runtime_recovery
-
-    run_runtime_recovery(
-        runtime,
-        instances=target_instances,
-        timestamp_utc=resolved_timestamp,
-        cache=shared_cache,
-    )
-
     for instance in target_instances:
         if runtime.shutdown_requested:
             break

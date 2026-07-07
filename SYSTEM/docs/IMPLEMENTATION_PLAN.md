@@ -97,6 +97,7 @@
 | P72 | End-to-End tests |
 | P73 | Performance tests |
 | P74 | LIVE sistēmas palaišana un validācija |
+| P75 | Audita High labojumi un spec atbilstības nostiprināšana |
 
 ---
 
@@ -1733,6 +1734,32 @@
 
 ---
 
+## P75 — Audita High labojumi un spec atbilstības nostiprināšana
+
+**Rezultāts:** Visi post-Critical audita High punkti novērsti; state, risk konfigurācija, recovery, I/O retry, timeout/stale enforcement, MT4 partial close, ACK robustums, E2E trade management un identitātes validācija atbilst `SYSTEM_SPECIFICATION.md` §54–55, §57.2, §78–79, §80.4.
+
+**Atkarības:** P74 (funkcionālā bāze), `HIGH_FIX_PLAN.md` (audita plāns).
+
+**Faili:**
+- `engine/state/instance_state.py`, `engine/core/cycle.py`, `engine/core/recovery.py`, `engine/core/orchestrator.py`
+- `engine/core/atomic_io.py`, `engine/loader/*.py`, `engine/execution/*.py`
+- `engine/protocol/models.py`, `engine/protocol/identity.py`, `config/system.json`
+- `mql4/Include/SYSTEM_Execution.mqh`
+- `tests/e2e/test_trade_management_cycle.py`, `tests/protocol/test_identity.py`
+- `HIGH_FIX_SUMMARY.md`, `AUDIT_AFTER_HIGH.md`
+
+**Moduļi:** State, cycle, recovery, execution, protocol, MT4 execution — pilnīgāka LIVE gatavība.
+
+**Testi:**
+- 853+ automatizētie testi (`pytest tests/`)
+- E2E: OPEN → MODIFY (SL atjaunināts), OPEN → CLOSE (state clear)
+- Recovery: late ACK pēc TIMEOUT
+- P67 / §79.3: stale dati aptur ciklu pirms lēmuma fāzes (baru laika zīmogi); monitoring joprojām brīdina pēc cikla
+
+**Aizliegts pirms pabeigšanas:** Nav — šis ir post-LIVE audita posms.
+
+---
+
 ## Posmu atkarību diagramma
 
 ```
@@ -1829,6 +1856,8 @@ P61+P64–P68+P72+P73 ─► P74 (LIVE)
 | `mql4/Include/SYSTEM_Control.mqh` | P60 |
 | `mql4/Include/SYSTEM_Execution.mqh` | P61 |
 | `tools/validate_live.py` | P74 |
+| `docs/ORDER_COMMAND.md` | P52 |
+| `tools/validate_order_command.py` | P52 |
 
 ---
 

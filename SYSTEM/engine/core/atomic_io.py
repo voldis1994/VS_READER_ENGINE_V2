@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from engine.core.retry import RetryPolicy, run_with_retry
 from engine.protocol.errors import DataIOError
 
 ATOMIC_IO_MODULE = "core.atomic_io"
@@ -24,7 +25,28 @@ def _tmp_path_for(path: Path) -> Path:
     return path.with_name(f"{path.name}.tmp")
 
 
-def atomic_write_text(path: str | Path, content: str, *, encoding: str = DEFAULT_ENCODING) -> None:
+def atomic_write_text(
+    path: str | Path,
+    content: str,
+    *,
+    encoding: str = DEFAULT_ENCODING,
+    retry_policy: RetryPolicy | None = None,
+) -> None:
+    if retry_policy is None:
+        _atomic_write_text_once(path, content, encoding=encoding)
+        return
+    run_with_retry(
+        retry_policy,
+        lambda: _atomic_write_text_once(path, content, encoding=encoding),
+    )
+
+
+def _atomic_write_text_once(
+    path: str | Path,
+    content: str,
+    *,
+    encoding: str = DEFAULT_ENCODING,
+) -> None:
     target_path = _resolve_path(path)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = _tmp_path_for(target_path)
@@ -62,7 +84,21 @@ def is_file_stable(path: str | Path, *, checks: int = DEFAULT_STABILITY_CHECKS) 
     return True
 
 
-def atomic_read_text(path: str | Path, *, encoding: str = DEFAULT_ENCODING) -> str:
+def atomic_read_text(
+    path: str | Path,
+    *,
+    encoding: str = DEFAULT_ENCODING,
+    retry_policy: RetryPolicy | None = None,
+) -> str:
+    if retry_policy is None:
+        return _atomic_read_text_once(path, encoding=encoding)
+    return run_with_retry(
+        retry_policy,
+        lambda: _atomic_read_text_once(path, encoding=encoding),
+    )
+
+
+def _atomic_read_text_once(path: str | Path, *, encoding: str = DEFAULT_ENCODING) -> str:
     target_path = _resolve_path(path)
     tmp_path = _tmp_path_for(target_path)
     if tmp_path.exists():

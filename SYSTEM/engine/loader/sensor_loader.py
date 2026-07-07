@@ -15,6 +15,7 @@ from engine.core.cache import (
 from engine.core.clock import format_utc_timestamp
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
+from engine.core.retry import RetryPolicy
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ def load_sensor_data(
     instance: Instance,
     *,
     cache: MutableMapping[str, _CacheEntry] | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> RawSensorData:
     file_path = build_sensor_file_path(paths, instance)
     cache_key = str(file_path)
@@ -84,7 +86,7 @@ def load_sensor_data(
                 )
                 return data
 
-    raw_text = atomic_read_text(file_path)
+    raw_text = atomic_read_text(file_path, retry_policy=retry_policy)
     stat = file_path.stat()
     write_hash(file_path, build_sensor_hash_path(paths, instance), raw_text)
     history_rows, last_row = _extract_rows(raw_text)

@@ -337,6 +337,9 @@ class RiskConfig:
     max_daily_loss_percent: float
     max_drawdown_percent: float
     reward_ratio: float
+    max_risk_per_trade_percent: float
+    max_stop_loss_pips: float
+    volume_step: float
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -366,6 +369,33 @@ class RiskConfig:
                 context={"value": reward_ratio},
             )
         object.__setattr__(self, "reward_ratio", reward_ratio)
+        max_risk_per_trade_percent = _require_number(
+            self.max_risk_per_trade_percent,
+            "risk.max_risk_per_trade_percent",
+        )
+        if max_risk_per_trade_percent <= 0:
+            raise ValidationError(
+                "risk.max_risk_per_trade_percent must be > 0",
+                module="protocol.models",
+                context={"value": max_risk_per_trade_percent},
+            )
+        object.__setattr__(self, "max_risk_per_trade_percent", max_risk_per_trade_percent)
+        max_stop_loss_pips = _require_number(self.max_stop_loss_pips, "risk.max_stop_loss_pips")
+        if max_stop_loss_pips <= 0:
+            raise ValidationError(
+                "risk.max_stop_loss_pips must be > 0",
+                module="protocol.models",
+                context={"value": max_stop_loss_pips},
+            )
+        object.__setattr__(self, "max_stop_loss_pips", max_stop_loss_pips)
+        volume_step = _require_number(self.volume_step, "risk.volume_step")
+        if volume_step <= 0:
+            raise ValidationError(
+                "risk.volume_step must be > 0",
+                module="protocol.models",
+                context={"value": volume_step},
+            )
+        object.__setattr__(self, "volume_step", volume_step)
 
     def to_dict(self) -> dict[str, int | float]:
         return {
@@ -373,6 +403,9 @@ class RiskConfig:
             "max_daily_loss_percent": self.max_daily_loss_percent,
             "max_drawdown_percent": self.max_drawdown_percent,
             "reward_ratio": self.reward_ratio,
+            "max_risk_per_trade_percent": self.max_risk_per_trade_percent,
+            "max_stop_loss_pips": self.max_stop_loss_pips,
+            "volume_step": self.volume_step,
         }
 
 

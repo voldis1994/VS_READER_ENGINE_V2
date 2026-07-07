@@ -37,6 +37,7 @@ def build_market_csv(
     symbol: str,
     scenario: MarketScenario = "bullish",
     timestamp_utc: str = "2026-07-07T06:02:00.000Z",
+    close_override: float | None = None,
 ) -> str:
     if scenario == "bullish":
         rows = [
@@ -54,8 +55,16 @@ def build_market_csv(
         "time_utc,open,high,low,close,volume,symbol,timeframe,digits,point",
     ]
     for time_value, open_, high, low, close, volume in rows:
+        if close_override is not None and time_value == rows[-1][0]:
+            resolved_close = close_override
+            resolved_high = max(high, open_, resolved_close, low)
+            resolved_low = min(low, open_, resolved_close)
+        else:
+            resolved_close = close
+            resolved_high = high
+            resolved_low = low
         lines.append(
-            f"{time_value},{open_:.5f},{high:.5f},{low:.5f},{close:.5f},{volume},"
+            f"{time_value},{open_:.5f},{resolved_high:.5f},{resolved_low:.5f},{resolved_close:.5f},{volume},"
             f"{symbol},M1,5,0.00001"
         )
     if timestamp_utc != rows[-1][0]:
@@ -146,6 +155,7 @@ class MT4Simulator:
         market_scenario: MarketScenario = "bullish",
         status_scenario: StatusScenario = "tradeable",
         timestamp_utc: str = "2026-07-07T06:02:00.000Z",
+        close_override: float | None = None,
     ) -> ExportTickResult:
         self.paths.ensure_account_directories(instance.account_id)
         account_dir = self.paths.account_dir(instance.account_id)
@@ -161,6 +171,7 @@ class MT4Simulator:
                 symbol=instance.symbol,
                 scenario=market_scenario,
                 timestamp_utc=timestamp_utc,
+                close_override=close_override,
             ),
         )
         atomic_write_text(

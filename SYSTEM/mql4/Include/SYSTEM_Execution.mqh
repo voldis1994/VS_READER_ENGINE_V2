@@ -283,12 +283,13 @@ bool SYSTEM_ExecuteClose(
       return false;
    }
 
+   double close_volume = command.has_volume ? command.volume : OrderLots();
    double close_price = (OrderType() == OP_BUY)
       ? MarketInfo(command.symbol, MODE_BID)
       : MarketInfo(command.symbol, MODE_ASK);
    bool closed = OrderClose(
       command.ticket,
-      OrderLots(),
+      close_volume,
       close_price,
       SYSTEM_DEFAULT_SLIPPAGE,
       clrNONE

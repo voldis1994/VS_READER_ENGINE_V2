@@ -12,7 +12,7 @@ from engine.core.lifecycle import startup
 from engine.core.orchestrator import run_runtime_cycles
 from engine.core.paths import SystemPaths
 from engine.execution.engine import ExecutionResult
-from tests.core.config_payload import valid_system_config_payload
+from tests.core.config_payload import FIXTURE_CYCLE_UTC, valid_system_config_payload
 from tests.e2e.simulator.mt4_simulator import MT4Simulator
 
 
@@ -105,7 +105,12 @@ def test_single_instance_cycle_duration_under_limit(tmp_path: Path) -> None:
     instance = instances[0]
     limit_ms = runtime.config.runtime.cycle_max_duration_ms
 
-    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
 
     assert result.completed
     assert result.performance_timings is not None
@@ -122,6 +127,7 @@ def test_ten_instances_sequential_under_combined_limit(tmp_path: Path) -> None:
         runtime,
         instances=instances,
         use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
     )
 
     assert orchestrator_result.instance_count == len(instances)

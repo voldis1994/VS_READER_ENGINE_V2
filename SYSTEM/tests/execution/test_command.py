@@ -266,6 +266,9 @@ def test_build_order_command_from_decision_and_risk_engines() -> None:
             max_daily_loss_percent=2.0,
             max_drawdown_percent=10.0,
             reward_ratio=2.0,
+            max_risk_per_trade_percent=1.0,
+            max_stop_loss_pips=100.0,
+            volume_step=0.01,
         ),
         instance_state=instance_state,
         status=StatusRecord(

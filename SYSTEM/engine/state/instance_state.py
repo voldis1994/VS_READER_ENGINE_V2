@@ -29,6 +29,8 @@ class InstanceState:
     position_entry_price: float | None = None
     position_stop_loss: float | None = None
     position_take_profit: float | None = None
+    position_bars_open: int = 0
+    partial_close_applied: bool = False
     last_command_id: str = ""
     last_ack_status: str = AckStatus.TIMEOUT.value
     instrument_digits: int = 0
@@ -75,6 +77,8 @@ class InstanceState:
             self.position_stop_loss = stop_loss
         if take_profit is not None:
             self.position_take_profit = take_profit
+        self.position_bars_open = 1
+        self.partial_close_applied = False
 
     def update_position_levels(self, *, stop_loss: float, take_profit: float) -> None:
         self.position_stop_loss = stop_loss
@@ -90,6 +94,11 @@ class InstanceState:
             self.clear_position()
             return
         self.position_volume = remaining
+        self.partial_close_applied = True
+
+    def increment_position_bars(self) -> None:
+        if self.open_ticket is not None:
+            self.position_bars_open += 1
 
     def clear_position(self) -> None:
         self.open_ticket = None
@@ -98,6 +107,8 @@ class InstanceState:
         self.position_entry_price = None
         self.position_stop_loss = None
         self.position_take_profit = None
+        self.position_bars_open = 0
+        self.partial_close_applied = False
 
     def update_instrument(self, *, digits: int, point: float, pip: float) -> None:
         self.instrument_digits = digits
@@ -147,6 +158,10 @@ class InstanceState:
             data["position_stop_loss"] = self.position_stop_loss
         if self.position_take_profit is not None:
             data["position_take_profit"] = self.position_take_profit
+        if self.open_ticket is not None:
+            data["position_bars_open"] = self.position_bars_open
+            if self.partial_close_applied:
+                data["partial_close_applied"] = True
         if self.day_start_balance is not None:
             data["day_start_balance"] = self.day_start_balance
         if self.peak_equity is not None:
@@ -185,6 +200,10 @@ class InstanceState:
         position_take_profit = payload.get("position_take_profit")
         if position_take_profit is not None:
             state.position_take_profit = float(position_take_profit)
+        position_bars_open = payload.get("position_bars_open")
+        if position_bars_open is not None:
+            state.position_bars_open = int(position_bars_open)
+        state.partial_close_applied = bool(payload.get("partial_close_applied", False))
         state.last_command_id = str(payload.get("last_command_id", state.last_command_id))
         state.last_ack_status = str(payload.get("last_ack_status", state.last_ack_status))
         state.instrument_digits = int(payload.get("instrument_digits", state.instrument_digits))

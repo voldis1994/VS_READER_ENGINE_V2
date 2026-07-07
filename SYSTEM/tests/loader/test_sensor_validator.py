@@ -12,7 +12,7 @@ def test_sensor_validator_fixture_sensor_valid_csv_is_valid() -> None:
     raw_text = (FIXTURES_DIR / "sensor_valid.csv").read_text(encoding="utf-8")
     result = validate_sensor_csv(raw_text)
     assert result.is_valid
-    assert result.row_count == 2
+    assert result.row_count == 3
     assert result.errors == ()
 
 

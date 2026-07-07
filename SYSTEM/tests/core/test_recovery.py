@@ -238,6 +238,36 @@ def test_recover_pending_ack_applies_success_ack_and_position(tmp_path: Path) ->
     assert item.instance_state.open_ticket == 888
     assert item.instance_state.position_side == Side.BUY.value
     assert item.instance_state.position_volume == pytest.approx(0.1)
+    assert item.instance_state.position_entry_price == pytest.approx(1.10310)
+
+
+def test_recover_pending_ack_applies_late_success_after_timeout(tmp_path: Path) -> None:
+    runtime, instance = _startup_runtime(tmp_path)
+    _publish_open_control(runtime.paths, instance)
+    item = runtime.memory.get(instance)
+    assert item is not None
+    unconfirmed = detect_unconfirmed_control(runtime.paths, instance, item.instance_state)
+    assert unconfirmed is not None
+
+    timeout_result = recover_pending_ack(
+        runtime,
+        instance,
+        unconfirmed=unconfirmed,
+        timestamp_utc="2026-07-07T06:00:00.000Z",
+    )
+    assert timeout_result.timed_out is True
+    assert item.instance_state.last_ack_status == AckStatus.TIMEOUT.value
+
+    atomic_write_text(
+        build_ack_path(runtime.paths, instance),
+        _ack_payload(command_id=FIXED_COMMAND_ID, status=AckStatus.SUCCESS.value, ticket=999),
+    )
+    late_result = recover_pending_ack(runtime, instance, unconfirmed=unconfirmed)
+    assert late_result.recovered is True
+    assert late_result.timed_out is False
+    assert item.instance_state.last_ack_status == AckStatus.SUCCESS.value
+    assert item.instance_state.open_ticket == 999
+    assert item.instance_state.position_entry_price == pytest.approx(1.10310)
 
 
 def test_unconfirmed_control_is_not_republished_without_new_decision(tmp_path: Path) -> None:

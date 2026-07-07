@@ -26,7 +26,7 @@ from engine.core.performance import (
     should_emit_performance_log,
 )
 from engine.protocol.constants import LogLevel
-from tests.core.config_payload import valid_system_config_payload
+from tests.core.config_payload import FIXTURE_CYCLE_UTC, valid_system_config_payload
 
 
 FIXTURES_DIR = Path(__file__).parent.parent / "loader" / "fixtures"
@@ -209,7 +209,12 @@ def test_run_instance_cycle_measures_cycle_duration_ms(
 
     from engine.core.cycle import run_instance_cycle
 
-    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.performance_timings is not None
     assert result.performance_timings.cycle_duration_ms >= 0
     assert result.performance_timings.load_duration_ms >= 0
@@ -237,7 +242,11 @@ def test_run_runtime_cycles_logs_performance_metrics(
 
     monkeypatch.setattr("engine.core.cycle.run_execution_engine", _mock_run_execution_engine)
 
-    run_runtime_cycles(runtime, use_global_universe=False)
+    run_runtime_cycles(
+        runtime,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     for handler in runtime.system_logger.handlers:
         handler.flush()
     log_text = _read_system_log(runtime.paths)
@@ -269,6 +278,10 @@ def test_performance_metrics_do_not_change_trading_flags(
     monkeypatch.setattr("engine.core.cycle.run_execution_engine", _mock_run_execution_engine)
 
     before = runtime.allow_control_writes
-    run_runtime_cycles(runtime, use_global_universe=False)
+    run_runtime_cycles(
+        runtime,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert runtime.allow_control_writes == before
     assert performance_affects_decisions() is False

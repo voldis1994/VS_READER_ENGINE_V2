@@ -62,13 +62,13 @@ SYSTEM/
 |-----------|--------|
 | `docs/RULES.md` | Obligātie sistēmas noteikumi |
 | `docs/SYSTEM_SPECIFICATION.md` | Tehniskā specifikācija |
-| `docs/IMPLEMENTATION_PLAN.md` | Izstrādes plāns (P01–P74) |
+| `docs/IMPLEMENTATION_PLAN.md` | Izstrādes plāns (P01–P75) |
 
 ## Palaišana
 
 Live engine un dashboard tiks dokumentēti pilnā implementācijā (posms P62 un P66).
 
-Pirms LIVE palaišanas jābūt pabeigtam visam `docs/IMPLEMENTATION_PLAN.md` līdz posmam P74.
+Pirms LIVE palaišanas jābūt pabeigtam visam `docs/IMPLEMENTATION_PLAN.md` līdz posmam P74. P75 nostiprina audita High labojumus pēc P74.
 
 ## Instance modelis
 

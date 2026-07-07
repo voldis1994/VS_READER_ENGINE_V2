@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from engine.core.clock import now_utc
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.core.retry import validate_control_command_retry
+from engine.core.retry import RetryPolicy, build_retry_policy, validate_control_command_retry
 from engine.core.timeout import build_ack_timeout_config, is_ack_timeout_elapsed, log_ack_timeout
 from engine.execution.ack_reader import (
     AckInterpretation,
@@ -205,11 +205,30 @@ def run_execution_engine(
             command_id=order_command.command_id,
         )
 
+    retry_policy = build_retry_policy(runtime)
+    from engine.core.recovery import detect_unconfirmed_control, is_control_republish_allowed
+
+    unconfirmed = detect_unconfirmed_control(paths, instance, instance_state)
+    if not is_control_republish_allowed(
+        instance_state,
+        unconfirmed,
+        proposed_command_id=order_command.command_id,
+    ):
+        return ExecutionResult(
+            order_command=order_command,
+            control_published=False,
+            trade_intent_logged=False,
+            ack_interpretation=None,
+            trade_journal_entry=None,
+            state_updated=False,
+        )
+
     publish_control(
         paths,
         instance,
         order_command,
         timestamp_utc=resolved_timestamp,
+        retry_policy=retry_policy,
     )
 
     if not _requires_trade_execution(order_command):
@@ -231,10 +250,26 @@ def run_execution_engine(
 
     ack_timeout = build_ack_timeout_config(runtime)
     wait_started = started_monotonic if started_monotonic is not None else monotonic_fn()
+
+    def _ack_available_for_command() -> bool:
+        ack_path = build_ack_path(paths, instance)
+        if not ack_path.exists():
+            return False
+        try:
+            read_ack_for_command(
+                paths,
+                instance,
+                expected_command_id=order_command.command_id,
+                retry_policy=retry_policy,
+            )
+        except SystemError:
+            return False
+        return True
+
     ack_ready = wait_for_ack(
         started_monotonic=wait_started,
         ack_timeout_ms=ack_timeout.ack_timeout_ms,
-        ack_available=lambda: build_ack_path(paths, instance).exists(),
+        ack_available=_ack_available_for_command,
         monotonic_fn=monotonic_fn,
         sleep_fn=sleep_fn,
         poll_interval_ms=poll_interval_ms,
@@ -259,6 +294,7 @@ def run_execution_engine(
         paths,
         instance,
         expected_command_id=order_command.command_id,
+        retry_policy=retry_policy,
     )
     interpretation = interpret_ack(ack_record)
     log_ack_failure(paths, instance, ack_record)

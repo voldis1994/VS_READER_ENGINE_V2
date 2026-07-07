@@ -47,6 +47,9 @@ _RISK_FIELDS = frozenset(
         "max_daily_loss_percent",
         "max_drawdown_percent",
         "reward_ratio",
+        "max_risk_per_trade_percent",
+        "max_stop_loss_pips",
+        "volume_step",
     }
 )
 _ANALYSIS_FIELDS = frozenset(

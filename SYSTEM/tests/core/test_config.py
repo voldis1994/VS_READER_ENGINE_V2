@@ -29,6 +29,9 @@ def test_parse_config_payload_loads_analysis_and_risk_decision_parameters() -> N
     assert config.analysis.stop_loss_buffer == 0.0002
     assert config.analysis.weights.momentum == 1.0
     assert config.risk.reward_ratio == 2.0
+    assert config.risk.max_risk_per_trade_percent == 1.0
+    assert config.risk.max_stop_loss_pips == 100.0
+    assert config.risk.volume_step == 0.01
 
 
 def test_parse_config_payload_missing_required_field_raises() -> None:

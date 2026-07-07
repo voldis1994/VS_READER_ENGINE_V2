@@ -48,7 +48,7 @@ from engine.protocol.constants import (
 from engine.protocol.parser import parse_decision_journal_line, parse_error_journal_line
 from engine.protocol.models import StatusRecord, UniverseRecord
 from engine.validator.market_validator import ValidationResult
-from tests.core.config_payload import valid_system_config_payload
+from tests.core.config_payload import FIXTURE_CYCLE_UTC, valid_system_config_payload
 
 
 FIXTURES_DIR = Path(__file__).parent.parent / "loader" / "fixtures"
@@ -94,8 +94,12 @@ def _startup_runtime(tmp_path: Path):
     return runtime, instance
 
 
-def test_build_risk_trade_params_returns_positive_defaults() -> None:
-    params = build_risk_trade_params()
+def test_build_risk_trade_params_reads_from_runtime_config(tmp_path: Path) -> None:
+    runtime, _instance = _startup_runtime(tmp_path)
+    params = build_risk_trade_params(runtime)
+    assert params.max_risk_per_trade_percent == runtime.config.risk.max_risk_per_trade_percent
+    assert params.volume_step == runtime.config.risk.volume_step
+    assert params.max_stop_loss_pips == runtime.config.risk.max_stop_loss_pips
     assert params.max_risk_per_trade_percent > 0
     assert params.volume_step > 0
     assert params.max_stop_loss_pips > 0
@@ -114,7 +118,7 @@ def test_load_instance_cycle_data_loads_all_required_files(tmp_path: Path) -> No
     loaded = load_instance_cycle_data(runtime.paths, instance, use_global_universe=False)
     assert isinstance(loaded, InstanceCycleData)
     assert loaded.market_raw.row_count == 3
-    assert loaded.sensor_raw.row_count == 2
+    assert loaded.sensor_raw.row_count == 3
     assert loaded.status_raw.raw_text
     assert loaded.universe_raw.raw_text
 
@@ -346,7 +350,12 @@ def test_should_execute_trade_requires_allow_and_direction(tmp_path: Path) -> No
 
 def test_run_instance_cycle_completes_with_fixture_data_and_writes_decision_journal(tmp_path: Path) -> None:
     runtime, instance = _startup_runtime(tmp_path)
-    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.completed
     assert not result.error_logged
     assert result.decision_result is not None
@@ -365,7 +374,12 @@ def test_run_instance_cycle_invalid_market_logs_error_and_skips_trade(tmp_path: 
     invalid_path = runtime.paths.account_dir(instance.account_id) / instance.market_filename()
     invalid_path.write_text((FIXTURES_DIR / "market_missing.csv").read_text(encoding="utf-8"), encoding="utf-8")
 
-    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert not result.completed
     assert result.error_logged
     assert result.decision_result is None
@@ -381,7 +395,12 @@ def test_run_instance_cycle_invalid_market_logs_error_and_skips_trade(tmp_path: 
 
 def test_run_instance_cycle_calculates_buy_and_sell_each_cycle(tmp_path: Path) -> None:
     runtime, instance = _startup_runtime(tmp_path)
-    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.decision_result is not None
     assert result.decision_result.buy_candidate is not None
     assert result.decision_result.sell_candidate is not None
@@ -407,7 +426,12 @@ def test_run_instance_cycle_account_not_tradeable_produces_block_without_trade(t
         encoding="utf-8",
     )
 
-    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
     assert result.completed
     assert result.decision_result is not None
     assert result.decision_result.decision == Decision.BLOCK.value
@@ -475,6 +499,7 @@ def test_run_instance_cycle_passes_trade_management_to_execution(
         stop_loss=1.09800,
         take_profit=1.10400,
     )
+    instance_memory.instance_state.save(runtime.paths)
     captured: dict[str, object] = {}
 
     def _mock_run_execution_engine(**kwargs: object) -> ExecutionResult:
@@ -495,7 +520,12 @@ def test_run_instance_cycle_passes_trade_management_to_execution(
 
     monkeypatch.setattr("engine.core.cycle.run_execution_engine", _mock_run_execution_engine)
 
-    result = run_instance_cycle(runtime, instance, use_global_universe=False)
+    result = run_instance_cycle(
+        runtime,
+        instance,
+        use_global_universe=False,
+        timestamp_utc=FIXTURE_CYCLE_UTC,
+    )
 
     assert result.completed
     assert captured["management_result"] is not None

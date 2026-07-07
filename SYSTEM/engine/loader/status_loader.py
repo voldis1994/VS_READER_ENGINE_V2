@@ -9,6 +9,7 @@ from typing import MutableMapping
 from engine.core.atomic_io import atomic_read_text
 from engine.core.clock import format_utc_timestamp
 from engine.core.paths import SystemPaths
+from engine.core.retry import RetryPolicy
 from engine.protocol.constants import FILENAME_STATUS
 
 
@@ -40,6 +41,7 @@ def load_status_data(
     account_id: str,
     *,
     cache: MutableMapping[str, _CacheEntry] | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> RawStatusData:
     file_path = build_status_file_path(paths, account_id)
     cache_key = str(file_path)
@@ -54,7 +56,7 @@ def load_status_data(
         ):
             return cached.data
 
-    raw_text = atomic_read_text(file_path)
+    raw_text = atomic_read_text(file_path, retry_policy=retry_policy)
     stat = file_path.stat()
     data = RawStatusData(
         file_path=file_path,
