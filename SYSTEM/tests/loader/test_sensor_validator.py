@@ -1,6 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from engine.validator.sensor_validator import validate_sensor_csv
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def test_sensor_validator_fixture_sensor_valid_csv_is_valid() -> None:
+    raw_text = (FIXTURES_DIR / "sensor_valid.csv").read_text(encoding="utf-8")
+    result = validate_sensor_csv(raw_text)
+    assert result.is_valid
+    assert result.row_count == 2
+    assert result.errors == ()
 
 
 def test_sensor_validator_ask_greater_or_equal_bid_valid() -> None:

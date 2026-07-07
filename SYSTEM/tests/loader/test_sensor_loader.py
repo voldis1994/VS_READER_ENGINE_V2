@@ -36,7 +36,7 @@ def test_load_sensor_data_valid_csv_loads_history_and_last_row(tmp_path: Path) -
     data = load_sensor_data(paths, instance)
     assert data.file_path == file_path
     assert data.row_count == 2
-    assert data.last_row == "2026-07-07T06:01:00.000Z,1.08505,1.08525,0.00020,2,EURUSD,5,0.00001"
+    assert data.last_row == "2026-07-07T06:01:00.000Z,1.08505,1.08525,0.00020,20,EURUSD,5,0.00001"
     assert len(data.history_rows) == 2
     assert data.modified_utc.endswith("Z")
 
