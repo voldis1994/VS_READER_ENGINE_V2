@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "system": {
+    "name": "SYSTEM",
+    "root_path": "C:\\\\SYSTEM",
+    "timeframe": "M1"
+  },
+  "paths": {
+    "clients": "data/clients",
+    "logs": "data/logs",
+    "cache": "data/cache",
+    "history": "data/history",
+    "universe": "data/universe"
+  },
+  "runtime": {
+    "cycle_interval_ms": 1000,
+    "ack_timeout_ms": 5000,
+    "retry_max": 3,
+    "auto_discover_instances": true
+  },
+  "instances": [
+    {
+      "account_id": "12345",
+      "symbol": "EURUSD",
+      "magic": 100001,
+      "enabled": true
+    }
+  ],
+  "risk": {
+    "max_open_positions_per_instance": 1,
+    "max_daily_loss_percent": 2.0,
+    "max_drawdown_percent": 10.0
+  },
+  "analysis": {
+    "lookback_bars": 120
+  },
+  "journal": {
+    "retention_days": 30
+  },
+  "dashboard": {
+    "refresh_interval_ms": 1000
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "standard"
+  }
+}

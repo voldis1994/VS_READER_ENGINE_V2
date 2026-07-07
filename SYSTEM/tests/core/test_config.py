@@ -113,3 +113,11 @@ def test_load_system_config_invalid_json_raises(tmp_path: Path) -> None:
 def test_load_system_config_missing_file_raises(tmp_path: Path) -> None:
     with pytest.raises(ConfigurationError, match="failed to read config file"):
         load_system_config(tmp_path / "missing.json")
+
+
+def test_load_system_config_repository_file() -> None:
+    config = load_system_config(Path("config/system.json"))
+    assert config.schema_version == CONFIG_SCHEMA_VERSION
+    assert config.system.name == "SYSTEM"
+    assert config.system.timeframe == "M1"
+    assert config.paths.clients == "data/clients"
