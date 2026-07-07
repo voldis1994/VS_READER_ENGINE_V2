@@ -40,7 +40,10 @@ def test_memory_rss_stabilizes_over_1000_cycles(tmp_path: Path) -> None:
         )
         assert result.completed
         if index in MEMORY_SAMPLE_CYCLES:
-            samples[index] = read_memory_rss_mb()
+            sample = read_memory_rss_mb()
+            if sample is None:
+                pytest.skip("memory measurement unavailable on this platform")
+            samples[index] = sample
 
     warmup_growth = samples[50] - samples[1]
     late_growth = samples[MEMORY_SAMPLE_CYCLES[-1]] - samples[MEMORY_SAMPLE_CYCLES[-2]]

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import resource
 import sys
 import time
 from dataclasses import dataclass, field
@@ -30,7 +29,7 @@ class InstancePerformanceMetrics:
     analysis_duration_ms: int
     decision_duration_ms: int
     io_wait_ms: int
-    memory_rss_mb: float
+    memory_rss_mb: float | None
 
 
 @dataclass
@@ -48,11 +47,23 @@ def monotonic_elapsed_ms(started_monotonic: float, ended_monotonic: float | None
     return max(0, int((end - started_monotonic) * 1000))
 
 
-def read_memory_rss_mb() -> float:
-    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    if sys.platform == "darwin":
-        return float(usage) / (1024 * 1024)
-    return float(usage) / 1024.0
+def read_memory_rss_mb() -> float | None:
+    try:
+        import resource
+
+        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if sys.platform == "darwin":
+            return float(usage) / (1024 * 1024)
+        return float(usage) / 1024.0
+    except (ImportError, OSError):
+        pass
+
+    try:
+        import psutil
+
+        return psutil.Process().memory_info().rss / (1024 * 1024)
+    except (ImportError, OSError):
+        return None
 
 
 def build_instance_performance_metrics(
@@ -75,13 +86,18 @@ def build_instance_performance_metrics(
 
 def format_performance_message(metrics: InstancePerformanceMetrics) -> str:
     instance = metrics.instance
+    memory_rss = (
+        f"{metrics.memory_rss_mb:.2f}"
+        if metrics.memory_rss_mb is not None
+        else "n/a"
+    )
     return (
         f"performance account={instance.account_id} symbol={instance.symbol} "
         f"magic={instance.magic} cycle_duration_ms={metrics.cycle_duration_ms} "
         f"load_duration_ms={metrics.load_duration_ms} "
         f"analysis_duration_ms={metrics.analysis_duration_ms} "
         f"decision_duration_ms={metrics.decision_duration_ms} "
-        f"io_wait_ms={metrics.io_wait_ms} memory_rss_mb={metrics.memory_rss_mb:.2f}"
+        f"io_wait_ms={metrics.io_wait_ms} memory_rss_mb={memory_rss}"
     )
 
 

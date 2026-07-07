@@ -86,7 +86,10 @@ def test_monotonic_elapsed_ms_is_non_negative() -> None:
 
 
 def test_read_memory_rss_mb_returns_positive_value() -> None:
-    assert read_memory_rss_mb() > 0
+    value = read_memory_rss_mb()
+    if value is None:
+        pytest.skip("memory measurement unavailable on this platform")
+    assert value > 0
 
 
 def test_build_instance_performance_metrics_maps_timing_fields() -> None:
