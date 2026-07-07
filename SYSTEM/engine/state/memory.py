@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
-from engine.analysis.context import AnalysisContext
 from engine.core.instance import Instance
-from engine.decision.engine import DecisionResult
 from engine.normalizer.market_normalizer import NormalizedMarketBar
 from engine.state.instance_state import InstanceState
 from engine.state.spread_state import SpreadState
+
+if TYPE_CHECKING:
+    from engine.analysis.context import AnalysisContext
+    from engine.decision.engine import DecisionResult
 
 
 @dataclass

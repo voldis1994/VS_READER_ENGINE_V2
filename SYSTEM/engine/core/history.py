@@ -8,12 +8,18 @@ from engine.core.atomic_io import atomic_read_text, atomic_write_text
 from engine.core.clock import format_utc_timestamp
 from engine.core.instance import Instance
 from engine.core.paths import SystemPaths
-from engine.execution.ack_reader import build_ack_path
-from engine.execution.control_writer import build_control_path
 from engine.loader.market_loader import build_market_file_path
 from engine.protocol.errors import DataIOError
 
 MODULE_NAME = "core.history"
+
+
+def _build_control_path(paths: SystemPaths, instance: Instance) -> Path:
+    return paths.account_dir(instance.account_id) / instance.control_filename()
+
+
+def _build_ack_path(paths: SystemPaths, instance: Instance) -> Path:
+    return paths.account_dir(instance.account_id) / instance.ack_filename()
 
 
 def _history_error(message: str, **context: object) -> DataIOError:
@@ -38,7 +44,7 @@ def _archive_file(source: Path, destination: Path) -> Path | None:
 
 
 def archive_processed_control(paths: SystemPaths, instance: Instance) -> Path | None:
-    control_path = build_control_path(paths, instance)
+    control_path = _build_control_path(paths, instance)
     destination_dir = paths.instance_history_dir(
         instance.account_id,
         instance.symbol,
@@ -49,7 +55,7 @@ def archive_processed_control(paths: SystemPaths, instance: Instance) -> Path | 
 
 
 def archive_processed_ack(paths: SystemPaths, instance: Instance) -> Path | None:
-    ack_path = build_ack_path(paths, instance)
+    ack_path = _build_ack_path(paths, instance)
     destination_dir = paths.instance_history_dir(
         instance.account_id,
         instance.symbol,
