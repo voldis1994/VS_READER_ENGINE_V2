@@ -1,3 +1,4 @@
+from engine.risk.engine import RiskEngineResult, RiskEngineTradeParams, run_risk_engine
 from engine.risk.metrics import build_risk_context, compute_daily_loss_percent, compute_drawdown_percent
 from engine.risk.position_sizing import (
     PositionSizingResult,
@@ -31,6 +32,8 @@ from engine.risk.rules import (
 __all__ = [
     "PositionSizingResult",
     "RiskContext",
+    "RiskEngineResult",
+    "RiskEngineTradeParams",
     "RiskRuleResult",
     "SlTpValidationResult",
     "build_risk_context",
@@ -47,6 +50,7 @@ __all__ = [
     "compute_stop_loss_distance_points",
     "evaluate_risk_rules",
     "normalize_volume_to_step",
+    "run_risk_engine",
     "open_position_count",
     "validate_buy_stop_loss_placement",
     "validate_sell_stop_loss_placement",
