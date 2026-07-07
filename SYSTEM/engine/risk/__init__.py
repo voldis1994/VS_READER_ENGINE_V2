@@ -7,6 +7,17 @@ from engine.risk.position_sizing import (
     compute_stop_loss_distance_points,
     normalize_volume_to_step,
 )
+from engine.risk.trade_management import (
+    OpenPosition,
+    TradeManagementConfig,
+    TradeManagementResult,
+    compute_progress_to_take_profit,
+    evaluate_breakeven,
+    evaluate_partial_close,
+    evaluate_time_stop,
+    evaluate_trade_management,
+    evaluate_trailing_stop,
+)
 from engine.risk.sl_tp import (
     SlTpValidationResult,
     calculate_take_profit,
@@ -30,12 +41,15 @@ from engine.risk.rules import (
 )
 
 __all__ = [
+    "OpenPosition",
     "PositionSizingResult",
     "RiskContext",
     "RiskEngineResult",
     "RiskEngineTradeParams",
     "RiskRuleResult",
     "SlTpValidationResult",
+    "TradeManagementConfig",
+    "TradeManagementResult",
     "build_risk_context",
     "calculate_position_size",
     "calculate_take_profit",
@@ -46,9 +60,15 @@ __all__ = [
     "compute_daily_loss_percent",
     "compute_drawdown_percent",
     "compute_point_value_per_lot",
+    "compute_progress_to_take_profit",
     "compute_stop_loss_distance_pips",
     "compute_stop_loss_distance_points",
+    "evaluate_breakeven",
+    "evaluate_partial_close",
     "evaluate_risk_rules",
+    "evaluate_time_stop",
+    "evaluate_trade_management",
+    "evaluate_trailing_stop",
     "normalize_volume_to_step",
     "run_risk_engine",
     "open_position_count",
