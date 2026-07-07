@@ -15,20 +15,36 @@ from engine.execution.control_writer import (
     publish_control,
     write_control_file,
 )
+from engine.execution.engine import (
+    ExecutionResult,
+    apply_ack_to_instance_state,
+    build_trade_intent_params,
+    execution_engine_performs_analysis,
+    log_ack_failure,
+    run_execution_engine,
+    wait_for_ack,
+)
 
 __all__ = [
     "AckInterpretation",
+    "ExecutionResult",
     "OrderCommand",
+    "apply_ack_to_instance_state",
     "build_ack_path",
     "build_ack_timeout_interpretation",
     "build_control_command",
     "build_control_path",
     "build_order_command",
+    "build_trade_intent_params",
+    "execution_engine_performs_analysis",
     "interpret_ack",
+    "log_ack_failure",
     "publish_control",
     "read_ack_for_command",
     "read_ack_for_command_with_journal",
     "read_ack_record",
+    "run_execution_engine",
     "validate_ack_record",
+    "wait_for_ack",
     "write_control_file",
 ]
