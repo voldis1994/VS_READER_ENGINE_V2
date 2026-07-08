@@ -349,3 +349,35 @@ Projekts **tehniski stabilā** (886 testi, imports, cross-platform labojumi). To
 ---
 
 *Audits sagatavots automātiski no koda, testu izpildes un dokumentu salīdzinājuma. Nav veiktas koda izmaiņas.*
+
+---
+
+## 12. Resolution status (2026-07-08)
+
+Visi šajā dokumentā minētie atradumi ir **novērsti**:
+
+| ID | Statuss | Labojums |
+|----|---------|----------|
+| C-01..C-03 | ✅ | Advisory/required AI (`engine/ai_decision_layer.py`, `config/system.json`) |
+| H-01 | ✅ | Invalid status → `completed=False` |
+| H-02 | ✅ | README, SYSTEM_SPECIFICATION §10.3.1, IMPLEMENTATION_PLAN P76 |
+| H-03 | ✅ | `tests/integration/test_ai_decision_pipeline.py`, E2E AI metadata |
+| H-04 | ✅ | `run_instance_ai_risk_pipeline`: AI pirms risk |
+| H-05 | ✅ | `decide_ai_decision` + `apply_risk_block_to_decision_result` |
+| M-01 | ✅ | PROTOCOL.md — TIMEOUT tikai iekšēji |
+| M-02 | ✅ | TRADING_BEHAVIOR_AUDIT.md spread validācija |
+| M-03, M-04 | ✅ | COMPLIANCE_AUDIT.md, FINAL_AUDIT.md atjaunināti |
+| M-05 | ✅ | `ai.timeout_ms` konfigurējams |
+| M-06 | ✅ | `should_call_ai_layer` — skip AI kad risk rules bloķē BUY/SELL |
+| M-07 | ✅ | Decision journal AI lauki |
+| M-08 | ✅ | Noņemts `socket.setdefaulttimeout` |
+| M-09 | ✅ | `allow_close` → trade management |
+| M-10 | ✅ | `@pytest.mark.no_ai_mock` + AI integration testi |
+| L-01 | ✅ | Viena parauga spread → `relative_spread=1.0` |
+| L-02 | ✅ | `cycle.py` `_abort_cycle_timeout` atkāpe |
+| L-03 | ✅ | `ai.retry_max`, `ai.retry_delay_ms` |
+| L-04 | ✅ | SYSTEM_SPECIFICATION §10.3.1 |
+
+**Testi:** 900 passed (`python3 -m pytest`)
+
+**Atvērtais punkts ārpus šīs vides:** P74 LIVE MT4 validācija ar reālu termināli.

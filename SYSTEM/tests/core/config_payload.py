@@ -80,5 +80,7 @@ def valid_system_config_payload() -> dict[str, Any]:
             "fail_closed": False,
             "reject_action": "BLOCK",
             "timeout_ms": 10000,
+            "retry_max": 2,
+            "retry_delay_ms": 500,
         },
     }

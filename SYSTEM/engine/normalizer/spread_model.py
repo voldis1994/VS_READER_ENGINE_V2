@@ -47,7 +47,12 @@ def update_spread_model(
     mean_spread = statistics.fmean(trimmed_history)
     median_spread = statistics.median(trimmed_history)
     std_spread = statistics.pstdev(trimmed_history) if len(trimmed_history) > 1 else 0.0
-    relative_spread = 0.0 if std_spread <= 0 else (float(current_spread) - mean_spread) / std_spread
+    if std_spread > 0:
+        relative_spread = (float(current_spread) - mean_spread) / std_spread
+    elif len(trimmed_history) < 2:
+        relative_spread = 1.0
+    else:
+        relative_spread = 0.0
 
     return SpreadModelSnapshot(
         history=trimmed_history,

@@ -562,6 +562,8 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             fail_closed=_require_key(ai_data, "fail_closed", "system_config"),
             reject_action=_require_key(ai_data, "reject_action", "system_config"),
             timeout_ms=_require_key(ai_data, "timeout_ms", "system_config"),
+            retry_max=_require_key(ai_data, "retry_max", "system_config"),
+            retry_delay_ms=_require_key(ai_data, "retry_delay_ms", "system_config"),
         ),
     )
 

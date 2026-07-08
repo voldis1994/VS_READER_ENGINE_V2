@@ -87,7 +87,9 @@ _TRADE_MANAGEMENT_FIELDS = frozenset(
 )
 _DASHBOARD_FIELDS = frozenset({"refresh_interval_ms"})
 _LOGGING_FIELDS = frozenset({"level", "format"})
-_AI_FIELDS = frozenset({"mode", "fail_closed", "reject_action", "timeout_ms"})
+_AI_FIELDS = frozenset(
+    {"mode", "fail_closed", "reject_action", "timeout_ms", "retry_max", "retry_delay_ms"}
+)
 
 
 def _config_error(message: str, **context: object) -> ConfigurationError:

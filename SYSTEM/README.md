@@ -80,8 +80,12 @@ Jaunā konsolē pārbaudiet: `echo %OPENAI_API_KEY%`
 | `fail_closed` | `false` | `true` uzvedas kā obligāts AI pat advisory režīmā |
 | `reject_action` | `BLOCK` | Kad AI noraida BUY/SELL: `BLOCK` vai `WAIT` |
 | `timeout_ms` | `10000` | OpenAI pieprasījuma timeouts ms |
+| `retry_max` | `2` | HTTP kļūdu/timeout mēģinājumu skaits |
+| `retry_delay_ms` | `500` | Pauze starp mēģinājumiem ms |
 
 **Advisory režīmā** (noklusējums): ja OpenAI nav pieejams, SYSTEM turpina ar savu signālu. **Required režīmā** vai `fail_closed: true`: bez AI atbildes viss kļūst par BLOCK.
+
+**Pilna plūsma:** `decide → AI → risk → journal → trade management → execution`
 
 ## Projekta struktūra
 

@@ -10,14 +10,9 @@ import pytest
 from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.paths import SystemPaths
-from engine.ai_decision_layer import (
-    apply_ai_to_decision_result,
-    apply_risk_block_to_decision_result,
-    get_ai_decision,
-)
 from engine.core.cycle import (
+    run_instance_ai_risk_pipeline,
     run_instance_decision_phase,
-    run_instance_risk_phase,
     validate_status_for_cycle,
 )
 from engine.decision.engine import DecisionResult
@@ -124,34 +119,14 @@ def run_instance_decision_pipeline(
         relative_spread=data_result.spread_snapshot.relative_spread,
         runtime=runtime,
     )
-    ai_query = get_ai_decision(
-        system_signal=decision_result.decision,
-        market_context={
-            "relative_spread": data_result.spread_snapshot.relative_spread,
-            "last_close": data_result.market_bars[-1].close,
-            "last_time_utc": str(data_result.market_bars[-1].time_utc),
-            "system_reason": decision_result.reason,
-            "buy_score": decision_result.buy_score,
-            "sell_score": decision_result.sell_score,
-        },
-        ai_config=runtime.config.ai,
-    )
-    decision_result, ai_meta = apply_ai_to_decision_result(
-        decision_result=decision_result,
-        ai_query=ai_query,
-        ai_config=runtime.config.ai,
-    )
-    risk_engine_result = run_instance_risk_phase(
+    decision_result, risk_engine_result, ai_meta, _ai_query = run_instance_ai_risk_pipeline(
         decision_result=decision_result,
         instance_memory=instance_memory,
         status=status,
         market_bars=data_result.market_bars,
         runtime=runtime,
+        spread_snapshot=data_result.spread_snapshot,
         trade_params=trade_params,
-    )
-    decision_result = apply_risk_block_to_decision_result(
-        decision_result=decision_result,
-        risk_engine_result=risk_engine_result,
     )
     log_decision(
         runtime.paths,

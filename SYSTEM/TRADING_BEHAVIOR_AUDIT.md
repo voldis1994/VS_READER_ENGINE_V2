@@ -587,7 +587,7 @@ Data validation is performed by loaders + validators:
 
 2. **Sensor CSV:**
    - Spread line structure; ensures non‑negative spread, properly formatted.
-   - Does **not** enforce economic consistency (some tests confirm “does not validate spread consistency” for some fixtures).
+   - Enforces economic consistency: `spread == ask - bid` and `spread_points == spread / point` (`sensor_validator.py`).
 
 3. **Status JSON:**
    - Field presence and types.
@@ -601,7 +601,7 @@ Data validation is performed by loaders + validators:
 
 5. **Config shape:**
    - `core/config.py::parse_config_payload` and `load_system_config`:
-     - Enforce exact field sets for `system`, `paths`, `runtime`, `instances`, `risk`, `analysis`, `journal`, `trade_management`, `dashboard`, `logging`.
+| `ai` | `mode`, `fail_closed`, `reject_action`, `timeout_ms`, `retry_max`, `retry_delay_ms` |
      - Reject “hard symbol lists”, “hard spread caps”, “hard digits/point/pip” fields.
 
 6. **Stale data:**

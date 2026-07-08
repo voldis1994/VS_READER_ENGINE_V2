@@ -601,6 +601,8 @@ class AIConfig:
     fail_closed: bool
     reject_action: str
     timeout_ms: int
+    retry_max: int
+    retry_delay_ms: int
 
     def __post_init__(self) -> None:
         mode = _require_non_empty_string(self.mode, "ai.mode")
@@ -625,6 +627,16 @@ class AIConfig:
             "timeout_ms",
             _require_int(self.timeout_ms, "ai.timeout_ms", minimum=1),
         )
+        object.__setattr__(
+            self,
+            "retry_max",
+            _require_int(self.retry_max, "ai.retry_max", minimum=0),
+        )
+        object.__setattr__(
+            self,
+            "retry_delay_ms",
+            _require_int(self.retry_delay_ms, "ai.retry_delay_ms", minimum=0),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -632,6 +644,8 @@ class AIConfig:
             "fail_closed": self.fail_closed,
             "reject_action": self.reject_action,
             "timeout_ms": self.timeout_ms,
+            "retry_max": self.retry_max,
+            "retry_delay_ms": self.retry_delay_ms,
         }
 
 

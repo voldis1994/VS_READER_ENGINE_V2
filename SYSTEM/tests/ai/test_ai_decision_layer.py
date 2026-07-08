@@ -20,6 +20,8 @@ def _advisory_config() -> AIConfig:
         fail_closed=False,
         reject_action="BLOCK",
         timeout_ms=10000,
+        retry_max=2,
+        retry_delay_ms=500,
     )
 
 
@@ -29,6 +31,8 @@ def _required_config() -> AIConfig:
         fail_closed=True,
         reject_action="BLOCK",
         timeout_ms=10000,
+        retry_max=2,
+        retry_delay_ms=500,
     )
 
 
@@ -231,6 +235,8 @@ def test_advisory_reject_action_wait() -> None:
         fail_closed=False,
         reject_action="WAIT",
         timeout_ms=10000,
+        retry_max=2,
+        retry_delay_ms=500,
     )
     decision, reason, _fallback, _ai_reason = apply_ai_advisory_decision(
         system_decision=Decision.BUY.value,

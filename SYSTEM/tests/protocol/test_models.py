@@ -118,6 +118,8 @@ def _system_config() -> SystemConfig:
             fail_closed=False,
             reject_action="BLOCK",
             timeout_ms=10000,
+            retry_max=2,
+            retry_delay_ms=500,
         ),
     )
 
@@ -244,6 +246,8 @@ def test_system_config_rejects_duplicate_instances() -> None:
                 fail_closed=False,
                 reject_action="BLOCK",
                 timeout_ms=10000,
+                retry_max=2,
+                retry_delay_ms=500,
             ),
         )
 

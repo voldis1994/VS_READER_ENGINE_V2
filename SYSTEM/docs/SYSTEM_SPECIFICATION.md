@@ -509,10 +509,23 @@ Instances netiek koplietotas starp threadiem bez sinhronizācijas mehānismiem, 
 `run_live.py` izsauc moduļus stingrā secībā:
 
 ```
-load → validate → normalize → analyze → decide → risk → journal → execute → ack
+load → validate → normalize → analyze → decide → ai → risk → journal → execute → ack
 ```
 
 Ja jebkurā posmā validācija neizdodas, cikls šai instance beidzas ar kļūdas pierakstu un bez trade.
+
+### 10.3.1. AI decision slānis (OpenAI)
+
+Pēc SYSTEM lēmuma (`engine/decision/engine.py`) cikls izsauc `engine/ai_decision_layer.py`:
+
+| Režīms | Uzvedība |
+|--------|----------|
+| `advisory` (noklusējums) | AI kļūda → SYSTEM fallback; valid AI → veto/allow |
+| `required` / `fail_closed` | AI kļūda → BLOCK |
+
+Konfigurācija: `config/system.json` sadaļa `ai`. API atslēga: vides mainīgais `OPENAI_API_KEY`.
+
+Secība: **decide → AI → risk (uz post-AI signāla) → journal → trade management (respektē `allow_close`) → execution**.
 
 ### 10.4. Dashboard process
 

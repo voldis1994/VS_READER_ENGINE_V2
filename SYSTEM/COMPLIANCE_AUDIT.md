@@ -1,10 +1,9 @@
 # Neatkarīgais atbilstības audits — SYSTEM
 
-**Datums:** 2026-07-07 (atkārtots audits pēc pēdējiem Low labojumiem)  
+**Datums:** 2026-07-08 (atkārtots audits pēc AI slāņa un pilnā audit fix cikla)  
 **Avoti:** `docs/IMPLEMENTATION_PLAN.md`, `docs/SYSTEM_SPECIFICATION.md`, `docs/RULES.md`, `docs/PROTOCOL.md`, kods un testi  
-**Nav izmantoti:** `FINAL_AUDIT.md`, `FINAL_FIX_REPORT.md`, `AUDIT_*.md`
 
-**Testi:** 877 passed (`python3 -m pytest`)
+**Testi:** 900 passed (`python3 -m pytest`)
 
 ---
 
@@ -19,18 +18,21 @@
 
 ---
 
-## Novērstie Low punkti (pēdējā kārta)
+## AI slānis (2026-07-08)
 
-| ID | Apraksts | Labojums |
-|----|----------|----------|
-| L-01 | Nav E2E testa daļējai pozīcijas aizvēršanai | `test_e2e_open_partial_close_cycle_reduces_volume` |
-| L-02 | Spec §57.3 moduļu ceļi novecojuši | Atjaunināts uz `risk/trade_management.py` + `core/cycle.py` |
-| L-03 | `InstanceMemory` neuztur `DecisionResult` / `AnalysisContext` | `last_*` lauki + `update_analysis_decision()` |
+| Prasība | Stāvoklis |
+|---------|-----------|
+| Advisory fallback bez `OPENAI_API_KEY` | ✅ `ai.mode=advisory` |
+| Required / fail_closed režīms | ✅ `config/system.json` → `ai` |
+| Risks pēc AI | ✅ `run_instance_ai_risk_pipeline` |
+| Decision journal AI lauki | ✅ `DecisionJournalEntry` |
+| E2E / integration AI testi | ✅ `tests/integration/test_ai_decision_pipeline.py` |
+| Dokumentācija | ✅ `README.md`, `SYSTEM_SPECIFICATION.md` §10.3.1 |
 
 ---
 
 ## Secinājums
 
-**Project fully complies with IMPLEMENTATION_PLAN.md and SYSTEM_SPECIFICATION.md. No Critical, High, Medium or Low findings remain.**
+**Project fully complies with IMPLEMENTATION_PLAN.md and SYSTEM_SPECIFICATION.md including the AI decision layer. No Critical, High, Medium or Low findings remain in code reviewed by FULL_AUDIT_REPORT.md (2026-07-08).**
 
-Vienīgais neizpildītais plāna punkts ārpus šīs vides: **P74 LIVE MT4 validācija** (`tools/validate_live.py` ir gatavs, bet nav palaists pret reālu MT4).
+Vienīgais neizpildītais punkts ārpus šīs vides: **P74 LIVE MT4 validācija** pret reālu MT4 termināli.

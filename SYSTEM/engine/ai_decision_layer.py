@@ -4,6 +4,8 @@ import json
 import os
 import re
 import socket
+import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
@@ -131,7 +133,14 @@ def _build_openai_prompt(*, system_signal: str, market_context: dict[str, Any]) 
     )
 
 
-def _call_openai(*, api_key: str, prompt: str, timeout_s: int) -> str:
+def _call_openai(
+    *,
+    api_key: str,
+    prompt: str,
+    timeout_s: int,
+    retry_max: int,
+    retry_delay_ms: int,
+) -> str:
     url = "https://api.openai.com/v1/chat/completions"
     data = {
         "model": "gpt-4o-mini",
@@ -152,16 +161,31 @@ def _call_openai(*, api_key: str, prompt: str, timeout_s: int) -> str:
         },
     )
 
-    socket.setdefaulttimeout(timeout_s)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # nosec B310
-            raw = resp.read().decode("utf-8", errors="replace")
-    finally:
-        socket.setdefaulttimeout(None)
+    last_error: Exception | None = None
+    for attempt in range(retry_max + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # nosec B310
+                raw = resp.read().decode("utf-8", errors="replace")
+            obj = json.loads(raw)
+            content = obj["choices"][0]["message"]["content"]
+            return str(content)
+        except (socket.timeout, TimeoutError) as exc:
+            last_error = exc
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code in {429, 500, 502, 503, 504} and attempt < retry_max:
+                time.sleep(retry_delay_ms / 1000.0)
+                continue
+            raise
+        except Exception as exc:
+            last_error = exc
 
-    obj = json.loads(raw)
-    content = obj["choices"][0]["message"]["content"]
-    return str(content)
+        if attempt < retry_max:
+            time.sleep(retry_delay_ms / 1000.0)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("OpenAI request failed without error detail")
 
 
 def _timeout_seconds(ai_config: AIConfig | None) -> int:
@@ -175,6 +199,7 @@ def get_ai_decision(
     system_signal: str,
     market_context: dict[str, Any],
     ai_config: AIConfig | None = None,
+    skip_reason: str | None = None,
 ) -> AIQueryResult:
     """
     Call OpenAI and return parsed AI decision metadata.
@@ -182,15 +207,26 @@ def get_ai_decision(
     On API error/timeout/missing key/invalid JSON the decision is None and
     error_type describes the failure for advisory/required handling.
     """
+    if skip_reason is not None:
+        return AIQueryResult(decision=None, error_type=skip_reason)
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return AIQueryResult(decision=None, error_type="missing_key")
 
     prompt = _build_openai_prompt(system_signal=system_signal, market_context=market_context)
     timeout_s = _timeout_seconds(ai_config)
+    retry_max = 0 if ai_config is None else ai_config.retry_max
+    retry_delay_ms = 0 if ai_config is None else ai_config.retry_delay_ms
 
     try:
-        content = _call_openai(api_key=api_key, prompt=prompt, timeout_s=timeout_s)
+        content = _call_openai(
+            api_key=api_key,
+            prompt=prompt,
+            timeout_s=timeout_s,
+            retry_max=retry_max,
+            retry_delay_ms=retry_delay_ms,
+        )
     except (socket.timeout, TimeoutError):
         return AIQueryResult(decision=None, error_type="timeout")
     except Exception:
@@ -200,6 +236,12 @@ def get_ai_decision(
     if parsed is None:
         return AIQueryResult(decision=None, error_type="invalid_json")
     return AIQueryResult(decision=parsed, error_type=None)
+
+
+def resolve_ai_allow_close(ai_query: AIQueryResult) -> bool:
+    if ai_query.decision is None:
+        return True
+    return ai_query.decision.allow_close
 
 
 def _is_fail_closed(config: AIConfig) -> bool:
@@ -226,6 +268,8 @@ def apply_ai_advisory_decision(
     Returns (decision, reason, fallback_used, ai_reason).
     """
     if ai_result is None:
+        if ai_error == "skipped_risk_precheck":
+            return system_decision, system_reason, False, None
         if _is_fail_closed(config):
             return Decision.BLOCK.value, "ai_required_missing_block", False, None
         fallback_used = True
@@ -330,19 +374,18 @@ def decide_final_decision(
     risk_engine_result: RiskEngineResult,
     ai_config: AIConfig,
 ) -> tuple[str, str, AIDecisionMeta]:
-    """
-    Convenience wrapper: AI layer first, then risk block on BUY/SELL.
-    """
+    """Test helper: AI layer plus post-risk BLOCK on BUY/SELL."""
     ai_decision, reason, meta = decide_ai_decision(
         system_signal=system_signal,
         system_reason=system_reason,
         ai_query=ai_query,
         ai_config=ai_config,
     )
-    if ai_decision in {Decision.BUY.value, Decision.SELL.value}:
-        if risk_engine_result.result != RiskResult.ALLOW.value:
-            ai_decision = Decision.BLOCK.value
-            reason = "RISK_FAIL: risk rules blocked"
+    if (
+        ai_decision in {Decision.BUY.value, Decision.SELL.value}
+        and risk_engine_result.result != RiskResult.ALLOW.value
+    ):
+        return Decision.BLOCK.value, "RISK_FAIL: risk rules blocked", meta
     return ai_decision, reason, meta
 
 

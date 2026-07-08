@@ -160,6 +160,8 @@ def test_required_mode_blocks_without_api_key(
         "fail_closed": True,
         "reject_action": "BLOCK",
         "timeout_ms": 10000,
+        "retry_max": 2,
+        "retry_delay_ms": 500,
     }
     config_dir = tmp_path / "config"
     config_dir.mkdir(parents=True, exist_ok=True)

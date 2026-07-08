@@ -14,10 +14,14 @@ from engine.core.performance import CycleTimingSnapshot, monotonic_elapsed_ms
 from engine.core.position_sync import reconcile_position_with_status
 from engine.core.retry import RetryAlertContext, RetryPolicy, build_retry_policy
 from engine.ai_decision_layer import (
+    AIDecisionMeta,
+    AIQueryResult,
     apply_ai_to_decision_result,
     apply_risk_block_to_decision_result,
     get_ai_decision,
+    resolve_ai_allow_close,
 )
+from engine.risk.precheck import should_call_ai_layer
 from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.execution.engine import ExecutionResult, run_execution_engine
 from engine.journal.decision_journal import log_decision
@@ -142,6 +146,7 @@ def run_instance_trade_management_phase(
     market_bars: tuple[NormalizedMarketBar, ...],
     runtime: LiveRuntime,
     trade_params: RiskEngineTradeParams | None = None,
+    ai_allow_close: bool = True,
 ) -> TradeManagementResult:
     if not runtime.config.trade_management.enabled:
         return TradeManagementResult(action=OrderAction.NONE.value, reason="")
@@ -165,7 +170,70 @@ def run_instance_trade_management_phase(
             settings=runtime.config.trade_management,
         ),
         digits=digits,
+        allow_close=ai_allow_close,
     )
+
+
+def _build_ai_market_context(
+    *,
+    decision_result: DecisionResult,
+    spread_snapshot: SpreadModelSnapshot,
+    market_bars: tuple[NormalizedMarketBar, ...],
+) -> dict[str, object]:
+    return {
+        "relative_spread": spread_snapshot.relative_spread,
+        "last_close": market_bars[-1].close,
+        "last_time_utc": str(market_bars[-1].time_utc),
+        "system_reason": decision_result.reason,
+        "buy_score": decision_result.buy_score,
+        "sell_score": decision_result.sell_score,
+    }
+
+
+def run_instance_ai_risk_pipeline(
+    *,
+    decision_result: DecisionResult,
+    instance_memory: InstanceMemory,
+    status: StatusRecord,
+    market_bars: tuple[NormalizedMarketBar, ...],
+    runtime: LiveRuntime,
+    spread_snapshot: SpreadModelSnapshot,
+    trade_params: RiskEngineTradeParams | None,
+) -> tuple[DecisionResult, RiskEngineResult, AIDecisionMeta, AIQueryResult]:
+    call_ai = should_call_ai_layer(
+        decision_result=decision_result,
+        status=status,
+        instance_state=instance_memory.instance_state,
+        risk_config=runtime.config.risk,
+    )
+    ai_query = get_ai_decision(
+        system_signal=decision_result.decision,
+        market_context=_build_ai_market_context(
+            decision_result=decision_result,
+            spread_snapshot=spread_snapshot,
+            market_bars=market_bars,
+        ),
+        ai_config=runtime.config.ai,
+        skip_reason=None if call_ai else "skipped_risk_precheck",
+    )
+    decision_result, ai_meta = apply_ai_to_decision_result(
+        decision_result=decision_result,
+        ai_query=ai_query,
+        ai_config=runtime.config.ai,
+    )
+    risk_engine_result = run_instance_risk_phase(
+        decision_result=decision_result,
+        instance_memory=instance_memory,
+        status=status,
+        market_bars=market_bars,
+        runtime=runtime,
+        trade_params=trade_params,
+    )
+    decision_result = apply_risk_block_to_decision_result(
+        decision_result=decision_result,
+        risk_engine_result=risk_engine_result,
+    )
+    return decision_result, risk_engine_result, ai_meta, ai_query
 
 
 def should_execute_management_action(order_action: str) -> bool:
@@ -724,34 +792,14 @@ def run_instance_cycle(
             runtime=runtime,
             block_reason=block_reason,
         )
-        ai_query = get_ai_decision(
-            system_signal=decision_result.decision,
-            market_context={
-                "relative_spread": spread_snapshot.relative_spread,
-                "last_close": market_bars[-1].close,
-                "last_time_utc": str(market_bars[-1].time_utc),
-                "system_reason": decision_result.reason,
-                "buy_score": decision_result.buy_score,
-                "sell_score": decision_result.sell_score,
-            },
-            ai_config=runtime.config.ai,
-        )
-        decision_result, ai_meta = apply_ai_to_decision_result(
-            decision_result=decision_result,
-            ai_query=ai_query,
-            ai_config=runtime.config.ai,
-        )
-        risk_engine_result = run_instance_risk_phase(
+        decision_result, risk_engine_result, ai_meta, ai_query = run_instance_ai_risk_pipeline(
             decision_result=decision_result,
             instance_memory=instance_memory,
             status=placeholder_status,
             market_bars=market_bars,
             runtime=runtime,
+            spread_snapshot=spread_snapshot,
             trade_params=trade_params,
-        )
-        decision_result = apply_risk_block_to_decision_result(
-            decision_result=decision_result,
-            risk_engine_result=risk_engine_result,
         )
         log_decision(
             runtime.paths,
@@ -807,6 +855,7 @@ def run_instance_cycle(
 
     block_reason = build_account_block_reason(status)
     analysis_started = time.monotonic()
+    ai_query: AIQueryResult | None = None
     try:
         decision_result = run_instance_decision_phase(
             universe=universe,
@@ -816,38 +865,17 @@ def run_instance_cycle(
             runtime=runtime,
             block_reason=block_reason,
         )
-        ai_query = get_ai_decision(
-            system_signal=decision_result.decision,
-            market_context={
-                "relative_spread": spread_snapshot.relative_spread,
-                "last_close": market_bars[-1].close,
-                "last_time_utc": str(market_bars[-1].time_utc),
-                "system_reason": decision_result.reason,
-                "buy_score": decision_result.buy_score,
-                "sell_score": decision_result.sell_score,
-            },
-            ai_config=runtime.config.ai,
-        )
-        decision_result, ai_meta = apply_ai_to_decision_result(
-            decision_result=decision_result,
-            ai_query=ai_query,
-            ai_config=runtime.config.ai,
-        )
-        analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
-        risk_started = time.monotonic()
-        risk_engine_result = run_instance_risk_phase(
+        decision_result, risk_engine_result, ai_meta, ai_query = run_instance_ai_risk_pipeline(
             decision_result=decision_result,
             instance_memory=instance_memory,
             status=status,
             market_bars=market_bars,
             runtime=runtime,
+            spread_snapshot=spread_snapshot,
             trade_params=trade_params,
         )
-        decision_result = apply_risk_block_to_decision_result(
-            decision_result=decision_result,
-            risk_engine_result=risk_engine_result,
-        )
-        decision_duration_ms = monotonic_elapsed_ms(risk_started)
+        analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
+        decision_duration_ms = analysis_duration_ms
     except SystemError:
         analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
         return _cycle_result(
@@ -886,6 +914,7 @@ def run_instance_cycle(
         market_bars=market_bars,
         runtime=runtime,
         trade_params=resolved_trade_params,
+        ai_allow_close=resolve_ai_allow_close(ai_query) if ai_query is not None else True,
     )
 
     execution_result: ExecutionResult | None = None
@@ -899,11 +928,11 @@ def run_instance_cycle(
                 timestamp_utc=resolved_timestamp,
             )
             return _abort_cycle_timeout(
-            runtime=runtime,
-            instance=instance,
-            timeout_guard=timeout_guard,
-            instance_memory=instance_memory,
-        )
+                runtime=runtime,
+                instance=instance,
+                timeout_guard=timeout_guard,
+                instance_memory=instance_memory,
+            )
         execution_started = time.monotonic()
         execution_result = run_execution_engine(
             paths=runtime.paths,
