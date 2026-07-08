@@ -4,6 +4,7 @@
 #property strict
 
 input int MagicNumber = 100001;
+input string SystemRootPath = "";
 
 #include <SYSTEM_Execution.mqh>
 #include <SYSTEM_Universe.mqh>
@@ -18,6 +19,9 @@ int OnInit()
       Print("SYSTEM_EA requires M1 timeframe");
       return INIT_FAILED;
    }
+
+   if(StringLen(SystemRootPath) > 0)
+      SYSTEM_ConfigureRootPath(SystemRootPath);
 
    if(!SYSTEM_InitPaths())
    {

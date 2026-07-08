@@ -2,22 +2,23 @@
 setlocal EnableExtensions
 title SYSTEM - lejuplade uzreiz
 color 0A
+set "EXIT_CODE=1"
 
 echo.
 echo  ============================================================
 echo   SYSTEM - AUTOMATISKA LEJUPIELADE UN UZSTADISANA
 echo  ============================================================
 echo.
-echo   Meprece: C:\SYSTEM
-echo   Avots:   GitHub (visi faili + testi)
+echo   Meprice: C:\SYSTEM
+echo   Avots:   GitHub main
 echo.
-echo   Uzgaidiet... (2-5 minutes atkariba no interneta)
+echo   Uzgaidiet... (1-3 minutes)
 echo.
 
 where powershell >nul 2>&1
 if errorlevel 1 (
-    echo [KLUDA] PowerShell nav atrasts.
-    goto :fail
+  echo [KLUDA] PowerShell nav atrasts.
+  goto :fail
 )
 
 set "SCRIPT_URL=https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/main/SYSTEM/scripts/install_windows.ps1"
@@ -31,34 +32,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 
 if errorlevel 1 goto :fail
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_FILE%" -InstallPath "C:\SYSTEM" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_FILE%" -InstallPath "C:\SYSTEM" -SkipTests
 set "EXIT_CODE=%ERRORLEVEL%"
 
 del /f /q "%SCRIPT_FILE%" >nul 2>&1
 
 echo.
 if %EXIT_CODE% neq 0 (
-    echo  [KLUDA] Uzstadisana neizdevas. Exit code: %EXIT_CODE%
-    goto :fail
+  echo  [KLUDA] Uzstadisana neizdevas. Exit code: %EXIT_CODE%
+  goto :fail
 )
 
 echo  ============================================================
-echo   GATAVS! Projekts ir: C:\SYSTEM
+echo   GATAVS! Projekts: C:\SYSTEM
 echo  ============================================================
 echo.
-echo   Nakamie soļi:
-echo     1. Atveriet: C:\SYSTEM\config\system.json
-echo     2. Ievadiet savu account_id, symbol, magic
-echo     3. MT4: kopējiet C:\SYSTEM\mql4 uz MT4 MQL4 mapi
-echo     4. Palaidiet: C:\SYSTEM\.venv\Scripts\activate
-echo                 python C:\SYSTEM\run_live.py
+echo   Palaid live:  C:\SYSTEM\PALAID.bat
 echo.
 goto :end
 
 :fail
 echo.
-echo  Nepieciešams: Python 3.11+ no https://www.python.org/downloads/
-echo  Instalejiet ar opciju "Add Python to PATH"
+echo  Nepieciesams: Python 3.11+ no https://www.python.org/downloads/
+echo  Instalejiet ar "Add Python to PATH"
 echo.
 
 :end

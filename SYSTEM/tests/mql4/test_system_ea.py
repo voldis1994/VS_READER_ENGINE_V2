@@ -20,6 +20,11 @@ def execution_source() -> str:
     return mql_source.load_mqh("SYSTEM_Execution.mqh")
 
 
+def test_system_ea_configures_root_path_when_input_set(ea_source: str) -> None:
+    assert "SystemRootPath" in ea_source
+    assert "SYSTEM_ConfigureRootPath" in ea_source
+
+
 def test_system_ea_includes_execution_module(ea_source: str) -> None:
     assert "#include <SYSTEM_Execution.mqh>" in ea_source
 

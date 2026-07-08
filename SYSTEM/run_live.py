@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from engine.core.lifecycle import run_live_main
+from engine.core.paths import SystemPaths
 
 CONFIG_RELATIVE_PATH = Path("config") / "system.json"
 
@@ -36,7 +37,22 @@ def _sync_config_root_path(config_path: Path, project_root: Path) -> None:
     )
 
 
+def setup_only(project_root: Path | None = None) -> int:
+    root = project_root or _resolve_project_root()
+    config_path = root / CONFIG_RELATIVE_PATH
+    if not config_path.is_file():
+        print(f"setup failed: config file not found at {config_path}", file=sys.stderr)
+        return 1
+
+    _sync_config_root_path(config_path, root)
+    SystemPaths(root).ensure_directories()
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--setup-only":
+        return setup_only()
+
     project_root = _resolve_project_root()
     config_path = project_root / CONFIG_RELATIVE_PATH
     if not config_path.is_file():

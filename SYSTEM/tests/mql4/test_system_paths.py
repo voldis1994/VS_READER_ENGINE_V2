@@ -20,8 +20,13 @@ def paths_source() -> str:
     return mql_source.load_mqh("SYSTEM_Paths.mqh")
 
 
-def test_system_paths_source_defines_root_path_as_c_system(paths_source: str) -> None:
-    assert mql_source.parse_define(paths_source, "SYSTEM_ROOT_PATH") == r"C:\SYSTEM"
+@pytest.fixture
+def root_config_source() -> str:
+    return mql_source.load_mqh("SYSTEM_RootConfig.mqh")
+
+
+def test_system_paths_source_defines_root_path_as_c_system(root_config_source: str) -> None:
+    assert mql_source.parse_define(root_config_source, "SYSTEM_ROOT_PATH") == r"C:\SYSTEM"
 
 
 def test_system_paths_constants_match_python_core_paths(paths_source: str) -> None:
@@ -73,6 +78,7 @@ def test_system_paths_public_functions_are_defined(paths_source: str) -> None:
 def test_system_get_root_path_returns_specified_root(paths_source: str) -> None:
     body = mql_source.function_body(paths_source, "SYSTEM_GetRootPath")
     assert "SYSTEM_ROOT_PATH" in body
+    assert "g_system_root_override" in body
 
 
 def test_system_get_clients_relative_path_returns_clients_segment(paths_source: str) -> None:
@@ -233,8 +239,8 @@ def test_system_init_paths_uses_account_number(paths_source: str) -> None:
     assert "SYSTEM_EnsureAccountDirectories" in body
 
 
-def test_system_path_points_to_c_system_root(paths_source: str) -> None:
-    root = mql_source.parse_define(paths_source, "SYSTEM_ROOT_PATH")
+def test_system_path_points_to_c_system_root(root_config_source: str, paths_source: str) -> None:
+    root = mql_source.parse_define(root_config_source, "SYSTEM_ROOT_PATH")
     clients = mql_source.parse_define(paths_source, "SYSTEM_CLIENTS_RELATIVE_PATH")
     account_dir = path_reference.build_account_dir(root, clients, "12345")
     assert account_dir == r"C:\SYSTEM\data\clients\12345"

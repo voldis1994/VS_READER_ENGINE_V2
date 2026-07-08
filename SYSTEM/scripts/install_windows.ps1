@@ -19,7 +19,7 @@ param(
     [string] $RepoUrl = "https://github.com/voldis1994/VS_READER_ENGINE_V2.git",
     [string] $Branch = "main",
     [string] $Mt4DataPath = "",
-    [switch] $SkipTests,
+    [switch] $SkipTests = $true,
     [switch] $SkipMt4
 )
 
@@ -201,6 +201,13 @@ $venvPython = Join-Path $venvPath "Scripts\python.exe"
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r (Join-Path $InstallPath "requirements.txt")
 
+Write-Step "Sinhronizē MT4 root config"
+& $venvPython (Join-Path $InstallPath "run_live.py") --setup-only
+$generateScript = Join-Path $InstallPath "scripts\generate_mql4_root.ps1"
+if (Test-Path $generateScript) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $generateScript -RootPath $InstallPath
+}
+
 if (-not $SkipMt4 -and $Mt4DataPath) {
     Write-Step "Kopē MT4 EA failus"
     Install-Mt4Files -SystemRoot $InstallPath -Mt4Root $Mt4DataPath
@@ -238,9 +245,9 @@ Write-Host "Konfigurācija:     $configPath"
 Write-Host "Python (venv):     $venvPython"
 Write-Host ""
 Write-Host "Nākamie soļi:"
-Write-Host "  1. Aktivizējiet vidi:  $InstallPath\.venv\Scripts\activate"
-Write-Host "  2. Pielāgojiet config: $configPath  (account_id, symbol, magic)"
-Write-Host "  3. MT4: pievienojiet SYSTEM_EA chartam un ieslēdziet AutoTrading"
-Write-Host "  4. Palaidiet:          python run_live.py"
-Write-Host "  5. LIVE pārbaude:      python tools\validate_live.py"
+Write-Host "  1. Pielāgojiet config: $configPath  (account_id, symbol, magic)"
+Write-Host "  2. MT4: scripts\copy_mql4_to_mt4.bat `"...\MQL4`""
+Write-Host "  3. MT4: pievienojiet SYSTEM_EA chartam, ieslēdziet AutoTrading"
+Write-Host "  4. Palaidiet:          PALAID.bat   (vai START.bat)"
+Write-Host "  5. LIVE pārbaude:      $venvPython tools\validate_live.py --root `"$InstallPath`""
 Write-Host ""

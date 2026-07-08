@@ -3,7 +3,8 @@
 
 #property strict
 
-#define SYSTEM_ROOT_PATH "C:\\SYSTEM"
+#include "SYSTEM_RootConfig.mqh"
+
 #define SYSTEM_CLIENTS_RELATIVE_PATH "data\\clients"
 #define SYSTEM_LOGS_RELATIVE_PATH "data\\logs"
 #define SYSTEM_CACHE_RELATIVE_PATH "data\\cache"
@@ -21,8 +22,18 @@
    int CreateDirectoryW(string lpPathName, int lpSecurityAttributes);
 #import
 
+string g_system_root_override = "";
+
+void SYSTEM_ConfigureRootPath(const string root_path)
+{
+   if(StringLen(root_path) > 0)
+      g_system_root_override = root_path;
+}
+
 string SYSTEM_GetRootPath()
 {
+   if(StringLen(g_system_root_override) > 0)
+      return g_system_root_override;
    return SYSTEM_ROOT_PATH;
 }
 
