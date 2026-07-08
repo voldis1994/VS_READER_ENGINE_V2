@@ -17,7 +17,7 @@
 param(
     [string] $InstallPath = "C:\SYSTEM",
     [string] $RepoUrl = "https://github.com/voldis1994/VS_READER_ENGINE_V2.git",
-    [string] $Branch = "cursor/reaudit-fixes-258d",
+    [string] $Branch = "main",
     [string] $Mt4DataPath = "",
     [switch] $SkipTests,
     [switch] $SkipMt4

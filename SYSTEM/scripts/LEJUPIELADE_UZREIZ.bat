@@ -20,7 +20,7 @@ if errorlevel 1 (
     goto :fail
 )
 
-set "SCRIPT_URL=https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/cursor/reaudit-fixes-258d/SYSTEM/scripts/install_windows.ps1"
+set "SCRIPT_URL=https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/main/SYSTEM/scripts/install_windows.ps1"
 set "SCRIPT_FILE=%TEMP%\system_install_%RANDOM%.ps1"
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^

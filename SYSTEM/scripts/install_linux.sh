@@ -10,7 +10,7 @@ set -euo pipefail
 
 INSTALL_PATH="${HOME}/SYSTEM"
 REPO_URL="https://github.com/voldis1994/VS_READER_ENGINE_V2.git"
-BRANCH="cursor/reaudit-fixes-258d"
+BRANCH="main"
 SKIP_TESTS=0
 
 usage() {
@@ -19,7 +19,7 @@ SYSTEM instalators (Linux/macOS)
 
 Opcijas:
   --install-path PATH   Mērķa mape (noklusējums: ~/SYSTEM)
-  --branch NAME         Git zars (noklusējums: cursor/reaudit-fixes-258d)
+  --branch NAME         Git zars (noklusējums: main)
   --skip-tests          Neizpildīt pytest
   -h, --help            Palīdzība
 EOF

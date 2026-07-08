@@ -4,7 +4,7 @@ SYSTEM — LEJUPIELĀDE UZREIZ (VIENS FAILS)
 VARIANTS 1 — VIENS FAILS, DUBULTKLIKŠĶIS (VIENKĀRŠĀKAIS)
 ---------------------------------------------------------
 1. Atveriet pārlūkā:
-   https://github.com/voldis1994/VS_READER_ENGINE_V2/raw/cursor/reaudit-fixes-258d/SYSTEM/scripts/LEJUPIELADE_UZREIZ.bat
+   https://github.com/voldis1994/VS_READER_ENGINE_V2/raw/main/SYSTEM/scripts/LEJUPIELADE_UZREIZ.bat
 
 2. Labā poga → Save As / Saglabāt kā → Desktop
 
@@ -17,11 +17,11 @@ VARIANTS 2 — POWERSHELL (KOPIĒT UN IELĪMĒT)
 --------------------------------------------
 Atveriet PowerShell un ielīmējiet:
 
-  iwr -useb https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/cursor/reaudit-fixes-258d/SYSTEM/scripts/lejupielade_uzreiz.ps1 | iex
+  iwr -useb https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/main/SYSTEM/scripts/lejupielade_uzreiz.ps1 | iex
 
 VAI:
 
-  Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/cursor/reaudit-fixes-258d/SYSTEM/scripts/lejupielade_uzreiz.ps1'))
+  Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/main/SYSTEM/scripts/lejupielade_uzreiz.ps1'))
 
 
 PRASĪBAS

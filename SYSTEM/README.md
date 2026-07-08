@@ -18,14 +18,14 @@ Projekta sakne: `C:\SYSTEM`
 
 **Vienkāršākais:** lejupielādējiet un dubultklikšķiniet:
 
-https://github.com/voldis1994/VS_READER_ENGINE_V2/raw/cursor/reaudit-fixes-258d/SYSTEM/scripts/LEJUPIELADE_UZREIZ.bat
+https://github.com/voldis1994/VS_READER_ENGINE_V2/raw/main/SYSTEM/scripts/LEJUPIELADE_UZREIZ.bat
 
 Viss tiks uzstādīts mapē `C:\SYSTEM` automātiski.
 
 **PowerShell (viena komanda):**
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/cursor/reaudit-fixes-258d/SYSTEM/scripts/lejupielade_uzreiz.ps1'))
+Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/voldis1994/VS_READER_ENGINE_V2/main/SYSTEM/scripts/lejupielade_uzreiz.ps1'))
 ```
 
 Papildu instrukcijas: `scripts/LEJUPIELADE.txt`

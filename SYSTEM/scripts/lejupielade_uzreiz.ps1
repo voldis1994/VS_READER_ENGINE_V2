@@ -5,7 +5,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $InstallPath = "C:\SYSTEM"
-$Branch = "cursor/reaudit-fixes-258d"
+$Branch = "main"
 $ZipUrl = "https://github.com/voldis1994/VS_READER_ENGINE_V2/archive/refs/heads/$([uri]::EscapeDataString($Branch)).zip"
 $Temp = Join-Path $env:TEMP ("system-dl-" + [guid]::NewGuid().ToString("N"))
 $ZipFile = Join-Path $Temp "repo.zip"
