@@ -135,9 +135,21 @@ SYSTEM/
 ## Palaišana
 
 ```bash
+cd C:\VS_READER_ENGINE_V2\SYSTEM
+scripts\start_live.bat
+```
+
+Vai manuāli:
+
+```bash
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 python run_live.py
 python dashboard.py
 ```
+
+`run_live.py` automātiski izmanto savu mapi kā sakni un, ja vajag, atjaunina `config/system.json` → `system.root_path`.
 
 Pilna LIVE palaišana prasa pabeigtu `docs/IMPLEMENTATION_PLAN.md` līdz P74 un P75 audit fix posmu.
 
