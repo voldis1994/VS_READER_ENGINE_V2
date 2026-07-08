@@ -87,6 +87,27 @@ Jaunā konsolē pārbaudiet: `echo %OPENAI_API_KEY%`
 
 **Pilna plūsma:** `decide → AI → risk → journal → trade management → execution`
 
+## MT4 (MetaEditor) uzstādīšana
+
+Kompilācijas kļūda `can't open ... SYSTEM_Execution.mqh` nozīmē, ka **`.mqh` faili nav MT4 `Include` mapē**. Visas 11 kļūdas pazudīs pēc pareizas kopēšanas.
+
+1. Atver MT4: **File → Open Data Folder** — iekšā ir `MQL4\Include` un `MQL4\Experts`.
+2. No `C:\SYSTEM\mql4\Include\` (vai repo `SYSTEM/mql4/Include/`) **nokopē visus** failus uz savu `MQL4\Include\`:
+
+   - `SYSTEM_Execution.mqh`
+   - `SYSTEM_Control.mqh`
+   - `SYSTEM_Status.mqh`
+   - `SYSTEM_Export.mqh`
+   - `SYSTEM_IO.mqh`
+   - `SYSTEM_Paths.mqh`
+   - `SYSTEM_Universe.mqh`
+
+3. `SYSTEM_EA.mq4` nokopē uz `MQL4\Experts\` (vai pārsauc uz `VS.mq4`, ja vēlies).
+4. EA kodā obligāti: `input int MagicNumber = 100001;` (pirms `#include`).
+5. MetaEditor: **Compile** (F7). Chart: timeframe **M1**.
+
+Tavs ceļš no ekrānšāviena: `C:\VS1\VS_STAGE_02_MT4_MANAGER\mt4_template\MQL4\Include\` — tieši tur jābūt visiem `.mqh` failiem.
+
 ## Projekta struktūra
 
 ```

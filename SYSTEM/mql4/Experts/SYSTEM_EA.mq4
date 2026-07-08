@@ -3,6 +3,8 @@
 #property version   "1.00"
 #property strict
 
+input int MagicNumber = 100001;
+
 #include <SYSTEM_Execution.mqh>
 
 datetime g_last_exported_bar_time = 0;
