@@ -13,25 +13,6 @@
 #define SYSTEM_OPEN_EXISTING 3
 #define SYSTEM_FILE_SHARE_READ 1
 
-#import "kernel32.dll"
-   int CreateFileW(
-      string lpFileName,
-      uint dwDesiredAccess,
-      uint dwShareMode,
-      int lpSecurityAttributes,
-      uint dwCreationDisposition,
-      uint dwFlagsAndAttributes,
-      int hTemplateFile
-   );
-   int ReadFile(
-      int hFile,
-      uchar &lpBuffer[],
-      int nNumberOfBytesToRead,
-      int &lpNumberOfBytesRead[],
-      int lpOverlapped
-   );
-#import
-
 string SYSTEM_GetTimeframeM1()
 {
    return SYSTEM_TIMEFRAME_M1;

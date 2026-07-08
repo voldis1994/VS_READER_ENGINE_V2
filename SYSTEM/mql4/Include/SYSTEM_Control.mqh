@@ -3,9 +3,8 @@
 
 #property strict
 
-#include <SYSTEM_Export.mqh>
+#include <SYSTEM_Status.mqh>
 
-#define SYSTEM_PROTOCOL_SCHEMA_VERSION "1.0.0"
 #define SYSTEM_CONTROL_FILENAME_TEMPLATE "control_%s_%d.json"
 #define SYSTEM_ACTION_OPEN "OPEN"
 #define SYSTEM_ACTION_MODIFY "MODIFY"
