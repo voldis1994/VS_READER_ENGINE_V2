@@ -6,6 +6,7 @@
 input int MagicNumber = 100001;
 
 #include <SYSTEM_Execution.mqh>
+#include <SYSTEM_Universe.mqh>
 
 datetime g_last_exported_bar_time = 0;
 string g_last_processed_command_id = "";

@@ -103,8 +103,10 @@ Kompilācijas kļūda `can't open ... SYSTEM_Execution.mqh` nozīmē, ka **`.mqh
    - `SYSTEM_Universe.mqh`
 
 3. `SYSTEM_EA.mq4` nokopē uz `MQL4\Experts\` (vai pārsauc uz `VS.mq4`, ja vēlies).
-4. EA kodā obligāti: `input int MagicNumber = 100001;` (pirms `#include`).
+4. EA kodā obligāti: `input int MagicNumber = 100001;` un `#include <SYSTEM_Universe.mqh>` (pēc `SYSTEM_Execution.mqh`).
 5. MetaEditor: **Compile** (F7). Chart: timeframe **M1**.
+
+**Svarīgi:** ja atjaunini kodu, **nokopē visus** `Include\SYSTEM_*.mqh` no jauna — daļēja kopēšana rada `function not defined` / `wrong parameters count`.
 
 Tavs ceļš no ekrānšāviena: `C:\VS1\VS_STAGE_02_MT4_MANAGER\mt4_template\MQL4\Include\` — tieši tur jābūt visiem `.mqh` failiem.
 

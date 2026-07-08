@@ -357,7 +357,7 @@ bool SYSTEM_TryExecutePendingControl(
    if(!SYSTEM_WriteAck(account_id, symbol, magic, command.command_id, result))
    {
       error_message = "failed to write ack file";
-      SYSTEM_ExportStatusWithLastError(account_id, error_message);
+      SYSTEM_ExportStatusWithLastError(account_id, symbol, magic, error_message);
       return false;
    }
 

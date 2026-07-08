@@ -31,6 +31,13 @@
    int FlushFileBuffers(int hFile);
    int CloseHandle(int hFile);
    int MoveFileExW(string lpExistingFileName, string lpNewFileName, uint dwFlags);
+   int ReadFile(
+      int hFile,
+      uchar &lpBuffer[],
+      int nNumberOfBytesToRead,
+      int &lpNumberOfBytesRead[],
+      int lpOverlapped
+   );
 #import
 
 string SYSTEM_TmpPathFor(const string path)
