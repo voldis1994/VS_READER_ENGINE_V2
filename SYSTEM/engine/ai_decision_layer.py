@@ -263,20 +263,17 @@ def apply_ai_advisory_decision(
     return system_decision, f"ai_allowed: {ai_result.reason}", False, ai_result.reason
 
 
-def decide_final_decision(
+def decide_ai_decision(
     *,
     system_signal: str,
     system_reason: str,
     ai_query: AIQueryResult,
-    risk_engine_result: RiskEngineResult,
     ai_config: AIConfig,
 ) -> tuple[str, str, AIDecisionMeta]:
     """
-    Final decision rules:
-    1) Advisory mode: AI failure falls back to SYSTEM decision.
-    2) Required/fail_closed: AI failure => BLOCK.
-    3) Valid AI can veto BUY/SELL or force BLOCK on AVOID.
-    4) Risk engine is last: risk FAIL => BLOCK even if AI allows.
+    Apply AI advisory/required rules without risk checks.
+
+    Returns (decision, reason, meta). meta.decision_after_ai is the post-AI signal.
     """
     ai_decision, reason, fallback_used, ai_reason = apply_ai_advisory_decision(
         system_decision=system_signal,
@@ -285,13 +282,6 @@ def decide_final_decision(
         ai_error=ai_query.error_type,
         config=ai_config,
     )
-    risk_pass = risk_engine_result.result == RiskResult.ALLOW.value
-
-    if ai_decision in {Decision.BUY.value, Decision.SELL.value}:
-        if not risk_pass:
-            ai_decision = Decision.BLOCK.value
-            reason = "RISK_FAIL: risk rules blocked"
-
     meta = AIDecisionMeta(
         ai_mode=ai_config.mode,
         ai_available=ai_query.available,
@@ -304,21 +294,72 @@ def decide_final_decision(
     return ai_decision, reason, meta
 
 
+def apply_risk_block_to_decision_result(
+    *,
+    decision_result: Any,
+    risk_engine_result: RiskEngineResult,
+) -> Any:
+    """
+    When risk blocks a BUY/SELL, force the final decision to BLOCK.
+    """
+    if decision_result.decision not in {Decision.BUY.value, Decision.SELL.value}:
+        return decision_result
+    if risk_engine_result.result != RiskResult.BLOCK.value:
+        return decision_result
+    reason = risk_engine_result.reason.strip() or "RISK_FAIL: risk rules blocked"
+    if not reason.startswith("RISK_FAIL"):
+        reason = f"RISK_FAIL: {reason}"
+    return decision_result.__class__(
+        decision_id=decision_result.decision_id,
+        decision=Decision.BLOCK.value,
+        reason=reason,
+        preferred_side=decision_result.preferred_side,
+        buy_candidate=decision_result.buy_candidate,
+        sell_candidate=decision_result.sell_candidate,
+        buy_score=decision_result.buy_score,
+        sell_score=decision_result.sell_score,
+        analysis_context=decision_result.analysis_context,
+    )
+
+
+def decide_final_decision(
+    *,
+    system_signal: str,
+    system_reason: str,
+    ai_query: AIQueryResult,
+    risk_engine_result: RiskEngineResult,
+    ai_config: AIConfig,
+) -> tuple[str, str, AIDecisionMeta]:
+    """
+    Convenience wrapper: AI layer first, then risk block on BUY/SELL.
+    """
+    ai_decision, reason, meta = decide_ai_decision(
+        system_signal=system_signal,
+        system_reason=system_reason,
+        ai_query=ai_query,
+        ai_config=ai_config,
+    )
+    if ai_decision in {Decision.BUY.value, Decision.SELL.value}:
+        if risk_engine_result.result != RiskResult.ALLOW.value:
+            ai_decision = Decision.BLOCK.value
+            reason = "RISK_FAIL: risk rules blocked"
+    return ai_decision, reason, meta
+
+
 def apply_ai_to_decision_result(
     *,
     decision_result: Any,
     ai_query: AIQueryResult,
-    risk_engine_result: RiskEngineResult,
     ai_config: AIConfig,
 ) -> tuple[Any, AIDecisionMeta]:
     """
-    Create a new DecisionResult with updated `decision` and `reason`.
+    Create a new DecisionResult with AI-updated `decision` and `reason`.
+    Risk is applied separately after this step.
     """
-    final_decision, final_reason, meta = decide_final_decision(
+    final_decision, final_reason, meta = decide_ai_decision(
         system_signal=decision_result.decision,
         system_reason=decision_result.reason,
         ai_query=ai_query,
-        risk_engine_result=risk_engine_result,
         ai_config=ai_config,
     )
     if (

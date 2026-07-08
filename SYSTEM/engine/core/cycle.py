@@ -13,7 +13,11 @@ from engine.core.paths import SystemPaths
 from engine.core.performance import CycleTimingSnapshot, monotonic_elapsed_ms
 from engine.core.position_sync import reconcile_position_with_status
 from engine.core.retry import RetryAlertContext, RetryPolicy, build_retry_policy
-from engine.ai_decision_layer import apply_ai_to_decision_result, get_ai_decision
+from engine.ai_decision_layer import (
+    apply_ai_to_decision_result,
+    apply_risk_block_to_decision_result,
+    get_ai_decision,
+)
 from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.execution.engine import ExecutionResult, run_execution_engine
 from engine.journal.decision_journal import log_decision
@@ -732,6 +736,11 @@ def run_instance_cycle(
             },
             ai_config=runtime.config.ai,
         )
+        decision_result, ai_meta = apply_ai_to_decision_result(
+            decision_result=decision_result,
+            ai_query=ai_query,
+            ai_config=runtime.config.ai,
+        )
         risk_engine_result = run_instance_risk_phase(
             decision_result=decision_result,
             instance_memory=instance_memory,
@@ -740,11 +749,9 @@ def run_instance_cycle(
             runtime=runtime,
             trade_params=trade_params,
         )
-        decision_result, ai_meta = apply_ai_to_decision_result(
+        decision_result = apply_risk_block_to_decision_result(
             decision_result=decision_result,
-            ai_query=ai_query,
             risk_engine_result=risk_engine_result,
-            ai_config=runtime.config.ai,
         )
         log_decision(
             runtime.paths,
@@ -821,6 +828,11 @@ def run_instance_cycle(
             },
             ai_config=runtime.config.ai,
         )
+        decision_result, ai_meta = apply_ai_to_decision_result(
+            decision_result=decision_result,
+            ai_query=ai_query,
+            ai_config=runtime.config.ai,
+        )
         analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
         risk_started = time.monotonic()
         risk_engine_result = run_instance_risk_phase(
@@ -831,11 +843,9 @@ def run_instance_cycle(
             runtime=runtime,
             trade_params=trade_params,
         )
-        decision_result, ai_meta = apply_ai_to_decision_result(
+        decision_result = apply_risk_block_to_decision_result(
             decision_result=decision_result,
-            ai_query=ai_query,
             risk_engine_result=risk_engine_result,
-            ai_config=runtime.config.ai,
         )
         decision_duration_ms = monotonic_elapsed_ms(risk_started)
     except SystemError:

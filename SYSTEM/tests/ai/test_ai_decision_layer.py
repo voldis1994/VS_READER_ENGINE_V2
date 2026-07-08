@@ -253,3 +253,17 @@ def test_risk_fail_always_blocks_even_if_ai_allows() -> None:
         ai_config=_advisory_config(),
     )
     assert decision == Decision.BLOCK.value
+
+
+def test_apply_risk_block_updates_decision_result() -> None:
+    from engine.ai_decision_layer import apply_risk_block_to_decision_result
+    from tests.journal.test_decision_journal import _manual_decision_result
+
+    original = _manual_decision_result()
+    blocked = apply_risk_block_to_decision_result(
+        decision_result=original,
+        risk_engine_result=_risk_block(),
+    )
+    assert blocked.decision == Decision.BLOCK.value
+    assert blocked.decision_id == original.decision_id
+    assert "RISK_FAIL" in blocked.reason

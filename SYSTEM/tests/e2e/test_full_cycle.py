@@ -422,3 +422,23 @@ def test_multi_instance_e2e(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert journal_a.exists()
     assert journal_b.exists()
     assert journal_a != journal_b
+
+
+def test_e2e_full_cycle_journal_includes_ai_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    instance = _instance()
+    simulator = MT4Simulator(SystemPaths(tmp_path))
+    result = _run_simulated_full_cycle(tmp_path, instance, simulator, monkeypatch)
+    paths = SystemPaths(tmp_path)
+
+    decision_path = build_decision_journal_path(paths, instance)
+    payload = json.loads(decision_path.read_text(encoding="utf-8").strip())
+    assert payload["ai_mode"] == "advisory"
+    assert payload["ai_available"] is True
+    assert result.decision_result is not None
+    assert payload["decision"] == result.decision_result.decision
+    assert payload["system_decision_before_ai"] in {
+        Decision.BUY.value,
+        Decision.SELL.value,
+        Decision.WAIT.value,
+        Decision.BLOCK.value,
+    }

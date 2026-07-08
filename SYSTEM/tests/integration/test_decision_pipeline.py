@@ -10,6 +10,11 @@ import pytest
 from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.paths import SystemPaths
+from engine.ai_decision_layer import (
+    apply_ai_to_decision_result,
+    apply_risk_block_to_decision_result,
+    get_ai_decision,
+)
 from engine.core.cycle import (
     run_instance_decision_phase,
     run_instance_risk_phase,
@@ -119,6 +124,23 @@ def run_instance_decision_pipeline(
         relative_spread=data_result.spread_snapshot.relative_spread,
         runtime=runtime,
     )
+    ai_query = get_ai_decision(
+        system_signal=decision_result.decision,
+        market_context={
+            "relative_spread": data_result.spread_snapshot.relative_spread,
+            "last_close": data_result.market_bars[-1].close,
+            "last_time_utc": str(data_result.market_bars[-1].time_utc),
+            "system_reason": decision_result.reason,
+            "buy_score": decision_result.buy_score,
+            "sell_score": decision_result.sell_score,
+        },
+        ai_config=runtime.config.ai,
+    )
+    decision_result, ai_meta = apply_ai_to_decision_result(
+        decision_result=decision_result,
+        ai_query=ai_query,
+        ai_config=runtime.config.ai,
+    )
     risk_engine_result = run_instance_risk_phase(
         decision_result=decision_result,
         instance_memory=instance_memory,
@@ -127,12 +149,17 @@ def run_instance_decision_pipeline(
         runtime=runtime,
         trade_params=trade_params,
     )
+    decision_result = apply_risk_block_to_decision_result(
+        decision_result=decision_result,
+        risk_engine_result=risk_engine_result,
+    )
     log_decision(
         runtime.paths,
         instance,
         decision_result,
         risk_engine_result,
         timestamp_utc=timestamp_utc,
+        ai_meta=ai_meta,
     )
 
     return DecisionPipelineResult(
@@ -216,7 +243,7 @@ def test_risk_block_includes_risk_reason(tmp_path: Path) -> None:
     assert result.completed
     assert result.decision_result is not None
     assert result.risk_engine_result is not None
-    assert result.decision_result.decision in {Decision.BUY.value, Decision.SELL.value}
+    assert result.decision_result.decision == Decision.BLOCK.value
     assert result.risk_engine_result.result == RiskResult.BLOCK.value
     assert REASON_RISK_MAX_POSITIONS in result.risk_engine_result.reason
 
@@ -308,7 +335,7 @@ def test_decision_journal_contains_all_decisions(tmp_path: Path) -> None:
     assert wait_entry["decision"] == Decision.WAIT.value
     assert wait_entry["reason"]
     assert REASON_EQUAL_SCORES in wait_entry["reason"]
-    assert risk_entry["decision"] in {Decision.BUY.value, Decision.SELL.value}
+    assert risk_entry["decision"] == Decision.BLOCK.value
     assert risk_entry["risk_result"] == RiskResult.BLOCK.value
     assert risk_entry["risk_reason"]
     assert REASON_RISK_MAX_POSITIONS in risk_entry["risk_reason"]

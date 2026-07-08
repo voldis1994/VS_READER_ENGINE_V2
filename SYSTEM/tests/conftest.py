@@ -7,15 +7,14 @@ from engine.ai_decision_layer import AIDecision
 
 
 @pytest.fixture(autouse=True)
-def _mock_openai_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+def _mock_openai_for_tests(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
     """
-    The AI decision layer is mandatory and would normally call OpenAI.
+    Deterministic OpenAI mock for most tests. Mark a test with ``no_ai_mock`` to
+    exercise advisory fallback / required blocking without this fixture.
+    """
+    if request.node.get_closest_marker("no_ai_mock"):
+        return
 
-    For the test suite we:
-    - set OPENAI_API_KEY to a dummy value (prevents early "missing key" blocks)
-    - mock the underlying network call `_call_openai` to return a deterministic,
-      system-signal-aligned allow/deny decision.
-    """
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     import engine.ai_decision_layer as mdl
