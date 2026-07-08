@@ -13,6 +13,7 @@ from engine.core.paths import SystemPaths
 from engine.core.performance import CycleTimingSnapshot, monotonic_elapsed_ms
 from engine.core.position_sync import reconcile_position_with_status
 from engine.core.retry import RetryAlertContext, RetryPolicy, build_retry_policy
+from engine.ai_decision_layer import apply_ai_to_decision_result, get_ai_decision
 from engine.decision.engine import DecisionResult, run_decision_engine
 from engine.execution.engine import ExecutionResult, run_execution_engine
 from engine.journal.decision_journal import log_decision
@@ -719,6 +720,17 @@ def run_instance_cycle(
             runtime=runtime,
             block_reason=block_reason,
         )
+        ai_decision = get_ai_decision(
+            system_signal=decision_result.decision,
+            market_context={
+                "relative_spread": spread_snapshot.relative_spread,
+                "last_close": market_bars[-1].close,
+                "last_time_utc": str(market_bars[-1].time_utc),
+                "system_reason": decision_result.reason,
+                "buy_score": decision_result.buy_score,
+                "sell_score": decision_result.sell_score,
+            },
+        )
         risk_engine_result = run_instance_risk_phase(
             decision_result=decision_result,
             instance_memory=instance_memory,
@@ -726,6 +738,11 @@ def run_instance_cycle(
             market_bars=market_bars,
             runtime=runtime,
             trade_params=trade_params,
+        )
+        decision_result = apply_ai_to_decision_result(
+            decision_result=decision_result,
+            ai_decision=ai_decision,
+            risk_engine_result=risk_engine_result,
         )
         log_decision(
             runtime.paths,
@@ -789,6 +806,17 @@ def run_instance_cycle(
             runtime=runtime,
             block_reason=block_reason,
         )
+        ai_decision = get_ai_decision(
+            system_signal=decision_result.decision,
+            market_context={
+                "relative_spread": spread_snapshot.relative_spread,
+                "last_close": market_bars[-1].close,
+                "last_time_utc": str(market_bars[-1].time_utc),
+                "system_reason": decision_result.reason,
+                "buy_score": decision_result.buy_score,
+                "sell_score": decision_result.sell_score,
+            },
+        )
         analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
         risk_started = time.monotonic()
         risk_engine_result = run_instance_risk_phase(
@@ -798,6 +826,11 @@ def run_instance_cycle(
             market_bars=market_bars,
             runtime=runtime,
             trade_params=trade_params,
+        )
+        decision_result = apply_ai_to_decision_result(
+            decision_result=decision_result,
+            ai_decision=ai_decision,
+            risk_engine_result=risk_engine_result,
         )
         decision_duration_ms = monotonic_elapsed_ms(risk_started)
     except SystemError:
