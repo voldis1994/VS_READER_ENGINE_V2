@@ -1,30 +1,35 @@
 @echo off
 setlocal EnableExtensions
-pushd "%~dp0\.."
+cd /d "%~dp0"
 set "ROOT=%CD%"
 
+echo.
+echo ========================================
+echo  SYSTEM - LIVE START
+echo ========================================
+echo.
 echo SYSTEM root: %ROOT%
+echo.
 
-if /I "%ROOT:~-7%"=="\scripts" (
+if not exist "%ROOT%\config\system.json" (
+  echo ERROR: nav atrasts %ROOT%\config\system.json
   echo.
-  echo ERROR: vecā start_live.bat versija. Izmanto: %~dp0..\PALAID.bat
-  echo Vai: git pull origin main
-  echo.
+  echo Pareizais ceļš: C:\VS_READER_ENGINE_V2\SYSTEM
   pause
   exit /b 1
 )
 
-if not exist "%ROOT%\config\system.json" (
-  echo ERROR: config\system.json not found in %ROOT%
+if not exist "%ROOT%\run_live.py" (
+  echo ERROR: nav atrasts %ROOT%\run_live.py
   pause
   exit /b 1
 )
 
 if not exist "%ROOT%\.venv\Scripts\python.exe" (
-  echo Creating Python virtual environment...
+  echo Izveido Python vidi (.venv)...
   py -m venv "%ROOT%\.venv"
   if errorlevel 1 (
-    echo ERROR: failed to create .venv - install Python 3.11+
+    echo ERROR: neizdevas izveidot .venv - instalē Python 3.11+
     pause
     exit /b 1
   )
@@ -36,7 +41,8 @@ if not exist "%ROOT%\.venv\Scripts\python.exe" (
 )
 
 echo.
-echo Starting run_live.py ...
+echo Palaižu run_live.py ...
+echo.
 python "%ROOT%\run_live.py"
 set EXIT_CODE=%ERRORLEVEL%
 echo.
