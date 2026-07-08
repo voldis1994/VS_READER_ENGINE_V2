@@ -13,6 +13,7 @@ from engine.protocol.models import DecisionJournalEntry
 from engine.protocol.writer import write_decision_journal_entry
 
 if TYPE_CHECKING:
+    from engine.ai_decision_layer import AIDecisionMeta
     from engine.decision.engine import DecisionResult
     from engine.risk.engine import RiskEngineResult
 
@@ -29,6 +30,7 @@ def build_decision_journal_entry(
     risk_engine_result: RiskEngineResult,
     *,
     timestamp_utc: str,
+    ai_meta: AIDecisionMeta | None = None,
 ) -> DecisionJournalEntry:
     risk_reason: str | None = None
     if risk_engine_result.result == RiskResult.BLOCK.value:
@@ -47,6 +49,13 @@ def build_decision_journal_entry(
         sell_score=decision_result.sell_score,
         risk_result=risk_engine_result.result,
         risk_reason=risk_reason,
+        ai_mode=ai_meta.ai_mode if ai_meta is not None else None,
+        ai_available=ai_meta.ai_available if ai_meta is not None else None,
+        ai_error_type=ai_meta.ai_error_type if ai_meta is not None else None,
+        ai_fallback_used=ai_meta.ai_fallback_used if ai_meta is not None else None,
+        ai_reason=ai_meta.ai_reason if ai_meta is not None else None,
+        system_decision_before_ai=ai_meta.system_decision_before_ai if ai_meta is not None else None,
+        decision_after_ai=ai_meta.decision_after_ai if ai_meta is not None else None,
     )
 
 
@@ -79,12 +88,14 @@ def log_decision(
     risk_engine_result: RiskEngineResult,
     *,
     timestamp_utc: str | None = None,
+    ai_meta: AIDecisionMeta | None = None,
 ) -> DecisionJournalEntry:
     entry = build_decision_journal_entry(
         instance,
         decision_result,
         risk_engine_result,
         timestamp_utc=timestamp_utc or now_utc(),
+        ai_meta=ai_meta,
     )
     append_decision_journal_entry(paths, instance, entry)
     return entry

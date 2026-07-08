@@ -591,6 +591,64 @@ class LoggingConfig:
         return {"level": self.level, "format": self.format}
 
 
+_AI_MODES = frozenset({"advisory", "required"})
+_AI_REJECT_ACTIONS = frozenset({"BLOCK", "WAIT"})
+
+
+@dataclass(frozen=True)
+class AIConfig:
+    mode: str
+    fail_closed: bool
+    reject_action: str
+    timeout_ms: int
+    retry_max: int
+    retry_delay_ms: int
+
+    def __post_init__(self) -> None:
+        mode = _require_non_empty_string(self.mode, "ai.mode")
+        if mode not in _AI_MODES:
+            raise ValidationError(
+                "ai.mode is invalid",
+                module="protocol.models",
+                context={"value": mode, "allowed": sorted(_AI_MODES)},
+            )
+        reject_action = _require_non_empty_string(self.reject_action, "ai.reject_action")
+        if reject_action not in _AI_REJECT_ACTIONS:
+            raise ValidationError(
+                "ai.reject_action is invalid",
+                module="protocol.models",
+                context={"value": reject_action, "allowed": sorted(_AI_REJECT_ACTIONS)},
+            )
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "fail_closed", bool(self.fail_closed))
+        object.__setattr__(self, "reject_action", reject_action)
+        object.__setattr__(
+            self,
+            "timeout_ms",
+            _require_int(self.timeout_ms, "ai.timeout_ms", minimum=1),
+        )
+        object.__setattr__(
+            self,
+            "retry_max",
+            _require_int(self.retry_max, "ai.retry_max", minimum=0),
+        )
+        object.__setattr__(
+            self,
+            "retry_delay_ms",
+            _require_int(self.retry_delay_ms, "ai.retry_delay_ms", minimum=0),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "fail_closed": self.fail_closed,
+            "reject_action": self.reject_action,
+            "timeout_ms": self.timeout_ms,
+            "retry_max": self.retry_max,
+            "retry_delay_ms": self.retry_delay_ms,
+        }
+
+
 @dataclass(frozen=True)
 class SystemConfig:
     schema_version: str
@@ -604,6 +662,7 @@ class SystemConfig:
     trade_management: TradeManagementSettings
     dashboard: DashboardConfig
     logging: LoggingConfig
+    ai: AIConfig
 
     def __post_init__(self) -> None:
         schema_version = _require_non_empty_string(self.schema_version, "schema_version")
@@ -641,6 +700,7 @@ class SystemConfig:
             "trade_management": self.trade_management.to_dict(),
             "dashboard": self.dashboard.to_dict(),
             "logging": self.logging.to_dict(),
+            "ai": self.ai.to_dict(),
         }
 
 
@@ -1212,6 +1272,13 @@ class DecisionJournalEntry:
     buy_score: float | None = None
     sell_score: float | None = None
     risk_reason: str | None = None
+    ai_mode: str | None = None
+    ai_available: bool | None = None
+    ai_error_type: str | None = None
+    ai_fallback_used: bool | None = None
+    ai_reason: str | None = None
+    system_decision_before_ai: str | None = None
+    decision_after_ai: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "decision_id", _require_non_empty_string(self.decision_id, "decision_id"))
@@ -1246,6 +1313,52 @@ class DecisionJournalEntry:
                 "risk_reason",
                 _require_non_empty_string(self.risk_reason, "risk_reason"),
             )
+        if self.ai_mode is not None:
+            object.__setattr__(
+                self,
+                "ai_mode",
+                _require_non_empty_string(self.ai_mode, "ai_mode"),
+            )
+        if self.ai_available is not None:
+            object.__setattr__(self, "ai_available", bool(self.ai_available))
+        if self.ai_error_type is not None:
+            object.__setattr__(
+                self,
+                "ai_error_type",
+                _require_non_empty_string(self.ai_error_type, "ai_error_type"),
+            )
+        if self.ai_fallback_used is not None:
+            object.__setattr__(self, "ai_fallback_used", bool(self.ai_fallback_used))
+        if self.ai_reason is not None:
+            object.__setattr__(
+                self,
+                "ai_reason",
+                _require_non_empty_string(self.ai_reason, "ai_reason"),
+            )
+        if self.system_decision_before_ai is not None:
+            system_decision = _require_non_empty_string(
+                self.system_decision_before_ai,
+                "system_decision_before_ai",
+            )
+            if not is_valid_decision(system_decision):
+                raise ValidationError(
+                    "system_decision_before_ai is invalid",
+                    module="protocol.models",
+                    context={"value": system_decision},
+                )
+            object.__setattr__(self, "system_decision_before_ai", system_decision)
+        if self.decision_after_ai is not None:
+            decision_after_ai = _require_non_empty_string(
+                self.decision_after_ai,
+                "decision_after_ai",
+            )
+            if not is_valid_decision(decision_after_ai):
+                raise ValidationError(
+                    "decision_after_ai is invalid",
+                    module="protocol.models",
+                    context={"value": decision_after_ai},
+                )
+            object.__setattr__(self, "decision_after_ai", decision_after_ai)
 
     @property
     def instance_key(self) -> InstanceKey:
@@ -1268,6 +1381,20 @@ class DecisionJournalEntry:
             data["sell_score"] = self.sell_score
         if self.risk_reason is not None:
             data["risk_reason"] = self.risk_reason
+        if self.ai_mode is not None:
+            data["ai_mode"] = self.ai_mode
+        if self.ai_available is not None:
+            data["ai_available"] = self.ai_available
+        if self.ai_error_type is not None:
+            data["ai_error_type"] = self.ai_error_type
+        if self.ai_fallback_used is not None:
+            data["ai_fallback_used"] = self.ai_fallback_used
+        if self.ai_reason is not None:
+            data["ai_reason"] = self.ai_reason
+        if self.system_decision_before_ai is not None:
+            data["system_decision_before_ai"] = self.system_decision_before_ai
+        if self.decision_after_ai is not None:
+            data["decision_after_ai"] = self.decision_after_ai
         return data
 
 

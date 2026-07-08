@@ -98,6 +98,7 @@
 | P73 | Performance tests |
 | P74 | LIVE sistēmas palaišana un validācija |
 | P75 | Audita High labojumi un spec atbilstības nostiprināšana |
+| P76 | AI decision slānis (advisory/required, OpenAI, journal, E2E) — **pabeigts 2026-07-08** |
 
 ---
 

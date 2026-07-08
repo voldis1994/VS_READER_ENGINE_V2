@@ -52,6 +52,19 @@ def _no_action() -> TradeManagementResult:
     return TradeManagementResult(action=OrderAction.NONE.value, reason="")
 
 
+def _gate_close_action(
+    result: TradeManagementResult,
+    *,
+    allow_close: bool,
+) -> TradeManagementResult:
+    if result.action == OrderAction.CLOSE.value and not allow_close:
+        return TradeManagementResult(
+            action=OrderAction.NONE.value,
+            reason="ai_veto_close: AI disallow_close",
+        )
+    return result
+
+
 def compute_progress_to_take_profit(
     *,
     side: str,
@@ -230,6 +243,7 @@ def evaluate_trade_management(
     swing_high: float,
     config: TradeManagementConfig,
     digits: int,
+    allow_close: bool = True,
 ) -> TradeManagementResult:
     if position is None:
         return _no_action()
@@ -239,7 +253,7 @@ def evaluate_trade_management(
         time_stop_max_bars=config.time_stop_max_bars,
     )
     if time_stop_result is not None:
-        return time_stop_result
+        return _gate_close_action(time_stop_result, allow_close=allow_close)
 
     partial_close_result = evaluate_partial_close(
         position=position,
@@ -249,7 +263,7 @@ def evaluate_trade_management(
         volume_step=config.volume_step,
     )
     if partial_close_result is not None:
-        return partial_close_result
+        return _gate_close_action(partial_close_result, allow_close=allow_close)
 
     trailing_result = evaluate_trailing_stop(
         position=position,

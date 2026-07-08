@@ -65,7 +65,9 @@ Galvenie lauki: `command_id`, `account_id`, `symbol`, `magic`, `action`, `reason
 
 Galvenie lauki: `command_id`, `account_id`, `symbol`, `magic`, `status`, `ticket`, `error_code`, `error_message`.
 
-`status` vērtības: `SUCCESS`, `FAILED`, `REJECTED`, `TIMEOUT`.
+`status` vērtības ārējā ACK JSON failā: `SUCCESS`, `FAILED`, `REJECTED`.
+
+`TIMEOUT` **nav** atļauta vērtība MT4 → Python ACK JSON (`is_valid_ack_status`). Timeout tiek interpretēts iekšēji (`InstanceState.last_ack_status`, trade journal `reason`), ja ACK fails neparādās noteiktā laikā.
 
 ## 6. State faili
 

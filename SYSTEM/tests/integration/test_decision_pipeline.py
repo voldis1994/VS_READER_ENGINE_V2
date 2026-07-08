@@ -11,8 +11,8 @@ from engine.core.instance import Instance
 from engine.core.lifecycle import LiveRuntime
 from engine.core.paths import SystemPaths
 from engine.core.cycle import (
+    run_instance_ai_risk_pipeline,
     run_instance_decision_phase,
-    run_instance_risk_phase,
     validate_status_for_cycle,
 )
 from engine.decision.engine import DecisionResult
@@ -119,12 +119,13 @@ def run_instance_decision_pipeline(
         relative_spread=data_result.spread_snapshot.relative_spread,
         runtime=runtime,
     )
-    risk_engine_result = run_instance_risk_phase(
+    decision_result, risk_engine_result, ai_meta, _ai_query = run_instance_ai_risk_pipeline(
         decision_result=decision_result,
         instance_memory=instance_memory,
         status=status,
         market_bars=data_result.market_bars,
         runtime=runtime,
+        spread_snapshot=data_result.spread_snapshot,
         trade_params=trade_params,
     )
     log_decision(
@@ -133,6 +134,7 @@ def run_instance_decision_pipeline(
         decision_result,
         risk_engine_result,
         timestamp_utc=timestamp_utc,
+        ai_meta=ai_meta,
     )
 
     return DecisionPipelineResult(
@@ -216,7 +218,7 @@ def test_risk_block_includes_risk_reason(tmp_path: Path) -> None:
     assert result.completed
     assert result.decision_result is not None
     assert result.risk_engine_result is not None
-    assert result.decision_result.decision in {Decision.BUY.value, Decision.SELL.value}
+    assert result.decision_result.decision == Decision.BLOCK.value
     assert result.risk_engine_result.result == RiskResult.BLOCK.value
     assert REASON_RISK_MAX_POSITIONS in result.risk_engine_result.reason
 
@@ -308,7 +310,7 @@ def test_decision_journal_contains_all_decisions(tmp_path: Path) -> None:
     assert wait_entry["decision"] == Decision.WAIT.value
     assert wait_entry["reason"]
     assert REASON_EQUAL_SCORES in wait_entry["reason"]
-    assert risk_entry["decision"] in {Decision.BUY.value, Decision.SELL.value}
+    assert risk_entry["decision"] == Decision.BLOCK.value
     assert risk_entry["risk_result"] == RiskResult.BLOCK.value
     assert risk_entry["risk_reason"]
     assert REASON_RISK_MAX_POSITIONS in risk_entry["risk_reason"]

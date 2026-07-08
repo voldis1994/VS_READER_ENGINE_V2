@@ -10,6 +10,7 @@ from engine.protocol.constants import (
 from engine.protocol.errors import ValidationError
 from engine.protocol.models import (
     AckRecord,
+    AIConfig,
     AnalysisConfig,
     AnalysisWeights,
     ControlCommand,
@@ -112,6 +113,14 @@ def _system_config() -> SystemConfig:
         ),
         dashboard=DashboardConfig(refresh_interval_ms=1000),
         logging=LoggingConfig(level="INFO", format="standard"),
+        ai=AIConfig(
+            mode="advisory",
+            fail_closed=False,
+            reject_action="BLOCK",
+            timeout_ms=10000,
+            retry_max=2,
+            retry_delay_ms=500,
+        ),
     )
 
 
@@ -232,6 +241,14 @@ def test_system_config_rejects_duplicate_instances() -> None:
             ),
             dashboard=DashboardConfig(1000),
             logging=LoggingConfig("INFO", "standard"),
+            ai=AIConfig(
+                mode="advisory",
+                fail_closed=False,
+                reject_action="BLOCK",
+                timeout_ms=10000,
+                retry_max=2,
+                retry_delay_ms=500,
+            ),
         )
 
 
