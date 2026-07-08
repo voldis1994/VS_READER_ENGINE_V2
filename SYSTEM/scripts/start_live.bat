@@ -1,33 +1,34 @@
 @echo off
-setlocal
-cd /d "%~dp0"
+setlocal EnableExtensions
+cd /d "%~dp0\.."
+set "ROOT=%CD%"
 
-echo SYSTEM root: %CD%
+echo SYSTEM root: %ROOT%
 
-if not exist "config\system.json" (
-  echo ERROR: config\system.json not found in %CD%
+if not exist "%ROOT%\config\system.json" (
+  echo ERROR: config\system.json not found in %ROOT%
   pause
   exit /b 1
 )
 
-if not exist ".venv\Scripts\python.exe" (
+if not exist "%ROOT%\.venv\Scripts\python.exe" (
   echo Creating Python virtual environment...
-  py -m venv .venv
+  py -m venv "%ROOT%\.venv"
   if errorlevel 1 (
     echo ERROR: failed to create .venv - install Python 3.11+
     pause
     exit /b 1
   )
-  call .venv\Scripts\activate.bat
+  call "%ROOT%\.venv\Scripts\activate.bat"
   python -m pip install --upgrade pip
-  pip install -r requirements.txt
+  pip install -r "%ROOT%\requirements.txt"
 ) else (
-  call .venv\Scripts\activate.bat
+  call "%ROOT%\.venv\Scripts\activate.bat"
 )
 
 echo.
 echo Starting run_live.py ...
-python run_live.py
+python "%ROOT%\run_live.py"
 set EXIT_CODE=%ERRORLEVEL%
 echo.
 echo Exit code: %EXIT_CODE%
