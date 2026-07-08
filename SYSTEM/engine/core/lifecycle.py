@@ -345,7 +345,15 @@ def run_live_main(
 
         interval_seconds = runtime.config.runtime.cycle_interval_ms / 1000.0
         while not runtime.shutdown_requested:
-            run_runtime_cycles(runtime)
+            try:
+                run_runtime_cycles(runtime)
+            except Exception as exc:
+                log_runtime_event(
+                    runtime,
+                    level="ERROR",
+                    module="core.lifecycle",
+                    message=f"runtime cycle crashed: {exc}",
+                )
             time.sleep(interval_seconds)
 
     return shutdown(runtime)

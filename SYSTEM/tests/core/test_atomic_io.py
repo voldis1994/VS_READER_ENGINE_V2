@@ -62,10 +62,35 @@ def test_atomic_read_text_reads_only_when_stable(tmp_path: Path, monkeypatch: py
     assert atomic_read_text(target) == '{"status":"SUCCESS"}'
 
 
-def test_atomic_read_text_rejects_when_tmp_exists(tmp_path: Path) -> None:
+def test_atomic_read_text_waits_when_tmp_exists_then_reads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "ack_EURUSD_100001.json"
+    tmp_path_file = target.with_name(f"{target.name}.tmp")
+    tmp_path_file.write_text("tmp", encoding="utf-8")
+
+    calls = {"count": 0}
+
+    def fake_once(path: str | Path, *, encoding: str = "utf-8") -> str:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            if tmp_path_file.exists():
+                raise DataIOError(
+                    "tmp file exists, final file is not ready",
+                    module="core.atomic_io",
+                )
+        target.write_text('{"status":"SUCCESS"}', encoding="utf-8")
+        tmp_path_file.unlink(missing_ok=True)
+        return '{"status":"SUCCESS"}'
+
+    monkeypatch.setattr(atomic_io, "_atomic_read_text_once", fake_once)
+    assert atomic_read_text(target) == '{"status":"SUCCESS"}'
+    assert calls["count"] >= 3
+
+
+def test_atomic_read_text_rejects_when_tmp_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "ack_EURUSD_100001.json"
     target.write_text("x", encoding="utf-8")
     target.with_name(f"{target.name}.tmp").write_text("tmp", encoding="utf-8")
+    monkeypatch.setattr(atomic_io, "DEFAULT_READ_WAIT_ATTEMPTS", 2)
     with pytest.raises(DataIOError, match="tmp file exists"):
         atomic_read_text(target)
 

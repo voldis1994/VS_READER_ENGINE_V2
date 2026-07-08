@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from engine.protocol.errors import DataIOError
 ATOMIC_IO_MODULE = "core.atomic_io"
 DEFAULT_ENCODING = "utf-8"
 DEFAULT_STABILITY_CHECKS = 2
+DEFAULT_READ_WAIT_ATTEMPTS = 20
+DEFAULT_READ_WAIT_DELAY_MS = 50
 
 
 def _io_error(message: str, **context: Any) -> DataIOError:
@@ -86,6 +89,11 @@ def is_file_stable(path: str | Path, *, checks: int = DEFAULT_STABILITY_CHECKS) 
     return True
 
 
+def _is_transient_read_error(exc: DataIOError) -> bool:
+    message = exc.message.lower()
+    return "tmp file exists" in message or "not stable" in message
+
+
 def atomic_read_text(
     path: str | Path,
     *,
@@ -93,13 +101,26 @@ def atomic_read_text(
     retry_policy: RetryPolicy | None = None,
     retry_alert_context: RetryAlertContext | None = None,
 ) -> str:
-    if retry_policy is None:
-        return _atomic_read_text_once(path, encoding=encoding)
-    return run_with_retry(
-        retry_policy,
-        lambda: _atomic_read_text_once(path, encoding=encoding),
-        alert_context=retry_alert_context,
-    )
+    if retry_policy is not None:
+        return run_with_retry(
+            retry_policy,
+            lambda: _atomic_read_text_once(path, encoding=encoding),
+            alert_context=retry_alert_context,
+        )
+
+    last_error: DataIOError | None = None
+    for attempt in range(1, DEFAULT_READ_WAIT_ATTEMPTS + 1):
+        try:
+            return _atomic_read_text_once(path, encoding=encoding)
+        except DataIOError as exc:
+            last_error = exc
+            if not _is_transient_read_error(exc) or attempt >= DEFAULT_READ_WAIT_ATTEMPTS:
+                raise
+            time.sleep(DEFAULT_READ_WAIT_DELAY_MS / 1000.0)
+
+    if last_error is not None:
+        raise last_error
+    raise _io_error("failed atomic text read", path=str(_resolve_path(path)))
 
 
 def _atomic_read_text_once(path: str | Path, *, encoding: str = DEFAULT_ENCODING) -> str:

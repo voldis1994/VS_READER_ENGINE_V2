@@ -82,8 +82,11 @@ def archive_market_snapshot(
     destination_dir.mkdir(parents=True, exist_ok=True)
     archive_date = _parse_utc_date(current_utc)
     destination = destination_dir / f"market_{archive_date}.csv"
-    content = atomic_read_text(market_path)
-    atomic_write_text(destination, content)
+    try:
+        content = atomic_read_text(market_path)
+        atomic_write_text(destination, content)
+    except DataIOError:
+        return None
     return destination
 
 

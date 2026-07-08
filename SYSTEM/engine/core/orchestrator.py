@@ -204,15 +204,35 @@ def run_runtime_cycles(
 
     processed_accounts: set[str] = set()
     for instance in target_instances:
-        archive_market_snapshot(runtime.paths, instance, current_utc=resolved_timestamp)
+        try:
+            archive_market_snapshot(runtime.paths, instance, current_utc=resolved_timestamp)
+        except Exception as exc:
+            log_error(
+                runtime.paths,
+                instance,
+                module=MODULE_NAME,
+                error_type=ErrorType.IO.value,
+                message="market snapshot archive failed",
+                context={"error": str(exc)},
+            )
         if instance.account_id in processed_accounts:
             continue
-        rotate_account_journals(
-            runtime.paths,
-            instance.account_id,
-            retention_days=runtime.config.journal.retention_days,
-            current_utc=resolved_timestamp,
-        )
+        try:
+            rotate_account_journals(
+                runtime.paths,
+                instance.account_id,
+                retention_days=runtime.config.journal.retention_days,
+                current_utc=resolved_timestamp,
+            )
+        except Exception as exc:
+            log_error(
+                runtime.paths,
+                instance,
+                module=MODULE_NAME,
+                error_type=ErrorType.IO.value,
+                message="journal rotation failed",
+                context={"error": str(exc)},
+            )
         processed_accounts.add(instance.account_id)
 
     return OrchestratorCycleResult(
