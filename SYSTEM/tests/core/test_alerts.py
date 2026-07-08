@@ -257,7 +257,7 @@ def test_log_instance_metrics_writes_metrics_to_system_log(tmp_path: Path) -> No
 
 def test_data_stale_generates_warning_alert(tmp_path: Path) -> None:
     runtime, instance = _startup_runtime(tmp_path)
-    current_utc = "2026-07-07T06:02:00.000Z"
+    current_utc = "2026-07-07T06:02:01.000Z"
 
     observe_instance_cycle(
         runtime,

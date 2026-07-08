@@ -14,6 +14,7 @@ from engine.core.monitoring import (
     build_instance_metrics,
     compute_elapsed_ms,
     is_data_stale,
+    resolve_effective_stale_threshold_ms,
     log_runtime_monitoring_summary,
     observe_instance_cycle,
     resolve_instance_health,
@@ -230,3 +231,8 @@ def test_compute_elapsed_ms_is_non_negative() -> None:
 
 def test_is_data_stale_respects_zero_threshold() -> None:
     assert is_data_stale(100000, 0) is False
+
+
+def test_resolve_effective_stale_threshold_ms_enforces_m1_floor() -> None:
+    assert resolve_effective_stale_threshold_ms(15_000, "M1") == 120_000
+    assert resolve_effective_stale_threshold_ms(180_000, "M1") == 180_000

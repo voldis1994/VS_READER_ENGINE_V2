@@ -720,8 +720,16 @@ def run_instance_cycle(
         )
     sensor_reading = sensor_result
 
-    stale_threshold_ms = runtime.config.runtime.data_stale_threshold_ms
-    from engine.core.monitoring import compute_data_freshness_ms, is_data_stale
+    from engine.core.monitoring import (
+        compute_data_freshness_ms,
+        is_data_stale,
+        resolve_effective_stale_threshold_ms,
+    )
+
+    stale_threshold_ms = resolve_effective_stale_threshold_ms(
+        runtime.config.runtime.data_stale_threshold_ms,
+        runtime.config.system.timeframe,
+    )
 
     market_data_utc = format_utc_timestamp(market_bars[-1].time_utc)
     sensor_data_utc = sensor_reading.time_utc

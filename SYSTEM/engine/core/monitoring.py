@@ -14,7 +14,7 @@ from engine.core.logging_setup import log_event
 from engine.core.monitoring_store import PersistedMonitoringMetrics, persist_instance_metrics
 from engine.core.retry import RetryAlertContext, build_retry_policy
 from engine.loader.market_loader import load_market_data
-from engine.protocol.constants import LogLevel, PROTOCOL_SCHEMA_VERSION
+from engine.protocol.constants import LogLevel, PROTOCOL_SCHEMA_VERSION, TIMEFRAME_M1
 from engine.protocol.errors import SystemError
 
 MODULE_NAME = "core.monitoring"
@@ -22,6 +22,8 @@ MODULE_NAME = "core.monitoring"
 INSTANCE_HEALTH_VALID = "VALID"
 INSTANCE_HEALTH_BLOCKED = "BLOCKED"
 INSTANCE_HEALTH_ERROR = "ERROR"
+
+M1_STALE_THRESHOLD_FLOOR_MS = 120_000
 
 ERROR_RATE_WINDOW_MS = 60_000
 
@@ -64,6 +66,16 @@ def is_data_stale(freshness_ms: int, threshold_ms: int) -> bool:
     if threshold_ms <= 0:
         return False
     return freshness_ms > threshold_ms
+
+
+def resolve_effective_stale_threshold_ms(threshold_ms: int, timeframe: str) -> int:
+    if threshold_ms <= 0:
+        return threshold_ms
+    floors = {
+        TIMEFRAME_M1: M1_STALE_THRESHOLD_FLOOR_MS,
+    }
+    floor = floors.get(timeframe, 0)
+    return max(threshold_ms, floor)
 
 
 def resolve_instance_health(cycle_result: InstanceCycleResult) -> str:
@@ -292,7 +304,10 @@ def observe_instance_cycle(
         ),
     )
 
-    stale_threshold_ms = runtime.config.runtime.data_stale_threshold_ms
+    stale_threshold_ms = resolve_effective_stale_threshold_ms(
+        runtime.config.runtime.data_stale_threshold_ms,
+        runtime.config.system.timeframe,
+    )
     data_stale = (
         metrics.data_freshness_ms is not None
         and is_data_stale(metrics.data_freshness_ms, stale_threshold_ms)

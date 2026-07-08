@@ -37,6 +37,34 @@ def _sync_config_root_path(config_path: Path, project_root: Path) -> None:
     )
 
 
+def _sync_config_stale_threshold(config_path: Path) -> None:
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    runtime = payload.get("runtime")
+    if not isinstance(runtime, dict):
+        return
+
+    current_threshold = runtime.get("data_stale_threshold_ms")
+    if not isinstance(current_threshold, int):
+        return
+
+    timeframe = str(payload.get("system", {}).get("timeframe", "M1"))
+    from engine.core.monitoring import resolve_effective_stale_threshold_ms
+
+    effective = resolve_effective_stale_threshold_ms(current_threshold, timeframe)
+    if effective == current_threshold:
+        return
+
+    runtime["data_stale_threshold_ms"] = effective
+    config_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"Updated config data_stale_threshold_ms -> {effective}",
+        file=sys.stderr,
+    )
+
+
 def _sync_config_instances_from_clients(config_path: Path, project_root: Path) -> None:
     clients_dir = project_root / "data" / "clients"
     if not clients_dir.is_dir():
@@ -85,7 +113,7 @@ def _sync_config_instances_from_clients(config_path: Path, project_root: Path) -
         encoding="utf-8",
     )
     print(
-        "Updated config instances from MT4 data: "
+        "Updated config from live data: "
         f"account_id={first.get('account_id')}, "
         f"symbol={first.get('symbol')}, magic={first.get('magic')}",
         file=sys.stderr,
@@ -94,6 +122,7 @@ def _sync_config_instances_from_clients(config_path: Path, project_root: Path) -
 
 def _prepare_config(config_path: Path, project_root: Path) -> None:
     _sync_config_root_path(config_path, project_root)
+    _sync_config_stale_threshold(config_path)
     _sync_config_instances_from_clients(config_path, project_root)
 
 
