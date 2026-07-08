@@ -419,7 +419,7 @@ def test_run_instance_cycle_invalid_status_produces_block_without_trade(tmp_path
         use_global_universe=False,
         timestamp_utc=FIXTURE_CYCLE_UTC,
     )
-    assert result.completed
+    assert not result.completed
     assert result.decision_result is not None
     assert result.decision_result.decision == Decision.BLOCK.value
     assert REASON_DATA_INVALID in result.decision_result.reason

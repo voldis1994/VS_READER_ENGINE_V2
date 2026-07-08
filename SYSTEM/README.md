@@ -60,6 +60,29 @@ pytest
 
 `python --version` jābūt 3.11 vai jaunākam.
 
+## AI lēmumu slānis (OpenAI)
+
+SYSTEM pēc pamata signāla (BUY/SELL/WAIT/BLOCK) var izsaukt OpenAI konsultatīvo slāni.
+
+1. Uzstādiet API atslēgu Windows vidē pirms `run_live.py` palaišanas:
+
+```powershell
+setx OPENAI_API_KEY "sk-..."
+```
+
+Jaunā konsolē pārbaudiet: `echo %OPENAI_API_KEY%`
+
+2. Konfigurācija `config/system.json` sadaļā `ai`:
+
+| Lauks | Noklusējums | Apraksts |
+|-------|-------------|----------|
+| `mode` | `advisory` | `advisory` — AI kļūda atgriež SYSTEM signālu; `required` — AI kļūda = BLOCK |
+| `fail_closed` | `false` | `true` uzvedas kā obligāts AI pat advisory režīmā |
+| `reject_action` | `BLOCK` | Kad AI noraida BUY/SELL: `BLOCK` vai `WAIT` |
+| `timeout_ms` | `10000` | OpenAI pieprasījuma timeouts ms |
+
+**Advisory režīmā** (noklusējums): ja OpenAI nav pieejams, SYSTEM turpina ar savu signālu. **Required režīmā** vai `fail_closed: true`: bez AI atbildes viss kļūst par BLOCK.
+
 ## Projekta struktūra
 
 ```

@@ -12,6 +12,7 @@ from engine.protocol.constants import (
 from engine.protocol.errors import ProtocolError
 from engine.protocol.models import (
     AckRecord,
+    AIConfig,
     AnalysisConfig,
     AnalysisWeights,
     ControlCommand,
@@ -146,6 +147,12 @@ def _system_config() -> SystemConfig:
         ),
         dashboard=DashboardConfig(refresh_interval_ms=1000),
         logging=LoggingConfig(level="INFO", format="standard"),
+        ai=AIConfig(
+            mode="advisory",
+            fail_closed=False,
+            reject_action="BLOCK",
+            timeout_ms=10000,
+        ),
     )
 
 

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from engine.protocol.constants import Decision, RiskResult
-from engine.protocol.errors import SystemError
+from engine.protocol.models import AIConfig
 from engine.risk.engine import RiskEngineResult
 
 MODULE_NAME = "ai.decision_layer"
@@ -25,7 +25,34 @@ class AIDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class AIQueryResult:
+    decision: AIDecision | None
+    error_type: str | None = None
+
+    @property
+    def available(self) -> bool:
+        return self.decision is not None
+
+
+@dataclass(frozen=True)
+class AIDecisionMeta:
+    ai_mode: str
+    ai_available: bool
+    ai_error_type: str | None
+    ai_fallback_used: bool
+    ai_reason: str | None
+    system_decision_before_ai: str
+    decision_after_ai: str
+
+
 _BIAS_ALLOWED = {"BULLISH", "BEARISH", "NEUTRAL", "AVOID"}
+_ERROR_FALLBACK_REASONS = {
+    "timeout": "ai_timeout_system_fallback",
+    "api_error": "ai_error_system_fallback",
+    "invalid_json": "ai_invalid_json_system_fallback",
+    "missing_key": "ai_error_system_fallback",
+}
 
 
 def _json_extract(text: str) -> str | None:
@@ -125,13 +152,11 @@ def _call_openai(*, api_key: str, prompt: str, timeout_s: int) -> str:
         },
     )
 
-    # Ensure socket-level timeout even if urllib internals differ by platform.
     socket.setdefaulttimeout(timeout_s)
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # nosec B310
             raw = resp.read().decode("utf-8", errors="replace")
     finally:
-        # Reset to default for safety.
         socket.setdefaulttimeout(None)
 
     obj = json.loads(raw)
@@ -139,103 +164,175 @@ def _call_openai(*, api_key: str, prompt: str, timeout_s: int) -> str:
     return str(content)
 
 
-def get_ai_decision(*, system_signal: str, market_context: dict[str, Any]) -> AIDecision | None:
-    """
-    Call OpenAI and return parsed AIDecision.
+def _timeout_seconds(ai_config: AIConfig | None) -> int:
+    if ai_config is None:
+        return 10
+    return max(1, int(ai_config.timeout_ms / 1000))
 
-    On any API error/timeout/missing key/invalid JSON:
-    - returns None (caller must BLOCK).
+
+def get_ai_decision(
+    *,
+    system_signal: str,
+    market_context: dict[str, Any],
+    ai_config: AIConfig | None = None,
+) -> AIQueryResult:
+    """
+    Call OpenAI and return parsed AI decision metadata.
+
+    On API error/timeout/missing key/invalid JSON the decision is None and
+    error_type describes the failure for advisory/required handling.
     """
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return None
+        return AIQueryResult(decision=None, error_type="missing_key")
 
     prompt = _build_openai_prompt(system_signal=system_signal, market_context=market_context)
+    timeout_s = _timeout_seconds(ai_config)
 
     try:
-        content = _call_openai(api_key=api_key, prompt=prompt, timeout_s=10)
+        content = _call_openai(api_key=api_key, prompt=prompt, timeout_s=timeout_s)
     except (socket.timeout, TimeoutError):
-        return None
+        return AIQueryResult(decision=None, error_type="timeout")
     except Exception:
-        return None
+        return AIQueryResult(decision=None, error_type="api_error")
 
-    return parse_ai_decision_json(content)
+    parsed = parse_ai_decision_json(content)
+    if parsed is None:
+        return AIQueryResult(decision=None, error_type="invalid_json")
+    return AIQueryResult(decision=parsed, error_type=None)
+
+
+def _is_fail_closed(config: AIConfig) -> bool:
+    return config.mode == "required" or config.fail_closed
+
+
+def _fallback_reason(error_type: str | None) -> str:
+    if error_type is None:
+        return "ai_error_system_fallback"
+    return _ERROR_FALLBACK_REASONS.get(error_type, "ai_error_system_fallback")
+
+
+def apply_ai_advisory_decision(
+    *,
+    system_decision: str,
+    system_reason: str,
+    ai_result: AIDecision | None,
+    ai_error: str | None,
+    config: AIConfig,
+) -> tuple[str, str, bool, str | None]:
+    """
+    Apply AI advisory/required rules without risk checks.
+
+    Returns (decision, reason, fallback_used, ai_reason).
+    """
+    if ai_result is None:
+        if _is_fail_closed(config):
+            return Decision.BLOCK.value, "ai_required_missing_block", False, None
+        fallback_used = True
+        fallback_code = _fallback_reason(ai_error)
+        if system_decision in {Decision.BUY.value, Decision.SELL.value}:
+            return system_decision, f"{fallback_code}: {system_reason}", fallback_used, None
+        if system_reason:
+            return system_decision, f"{fallback_code}: {system_reason}", fallback_used, None
+        return system_decision, fallback_code, fallback_used, None
+
+    if ai_result.bias == "AVOID":
+        return Decision.BLOCK.value, f"ai_veto_avoid: {ai_result.reason}", False, ai_result.reason
+
+    if system_decision == Decision.BUY.value and not ai_result.allow_buy:
+        reject = config.reject_action
+        return (
+            reject,
+            f"ai_veto_buy_rejected: {ai_result.reason}",
+            False,
+            ai_result.reason,
+        )
+
+    if system_decision == Decision.SELL.value and not ai_result.allow_sell:
+        reject = config.reject_action
+        return (
+            reject,
+            f"ai_veto_sell_rejected: {ai_result.reason}",
+            False,
+            ai_result.reason,
+        )
+
+    if system_decision in {Decision.WAIT.value, Decision.BLOCK.value}:
+        return system_decision, system_reason, False, ai_result.reason
+
+    return system_decision, f"ai_allowed: {ai_result.reason}", False, ai_result.reason
 
 
 def decide_final_decision(
     *,
     system_signal: str,
-    ai_decision: AIDecision | None,
+    system_reason: str,
+    ai_query: AIQueryResult,
     risk_engine_result: RiskEngineResult,
-) -> tuple[str, str]:
+    ai_config: AIConfig,
+) -> tuple[str, str, AIDecisionMeta]:
     """
     Final decision rules:
-    1) If SYSTEM=BUY and AI allow_buy=true and risk=PASS => final BUY
-    2) If SYSTEM=SELL and AI allow_sell=true and risk=PASS => final SELL
-    3) If AI says AVOID => final BLOCK
-    4) If AI rejects system signal => final WAIT or BLOCK.
-       For this project we map rejection to BLOCK (tests require BLOCK).
-    5) AI API error/timeout/no response => final BLOCK
-    6) AI never bypasses risk engine: risk is always last safety check.
-    7) Risk engine is last: risk FAIL => final BLOCK even if AI allows.
+    1) Advisory mode: AI failure falls back to SYSTEM decision.
+    2) Required/fail_closed: AI failure => BLOCK.
+    3) Valid AI can veto BUY/SELL or force BLOCK on AVOID.
+    4) Risk engine is last: risk FAIL => BLOCK even if AI allows.
     """
-    if ai_decision is None:
-        return Decision.BLOCK.value, "AI_ERROR: no response/timeout"
-    if ai_decision.bias == "AVOID":
-        return Decision.BLOCK.value, f"AI_AVOID: {ai_decision.reason}"
-
-    # Risk is always required to allow BUY/SELL.
+    ai_decision, reason, fallback_used, ai_reason = apply_ai_advisory_decision(
+        system_decision=system_signal,
+        system_reason=system_reason,
+        ai_result=ai_query.decision,
+        ai_error=ai_query.error_type,
+        config=ai_config,
+    )
     risk_pass = risk_engine_result.result == RiskResult.ALLOW.value
-    if system_signal == Decision.BUY.value:
-        if not ai_decision.allow_buy:
-            return Decision.BLOCK.value, f"AI_REJECT_BUY: {ai_decision.reason}"
-        if risk_pass:
-            return Decision.BUY.value, f"AI_ALLOW_BUY: {ai_decision.reason}"
-        return Decision.BLOCK.value, "RISK_FAIL: risk rules blocked"
 
-    if system_signal == Decision.SELL.value:
-        if not ai_decision.allow_sell:
-            return Decision.BLOCK.value, f"AI_REJECT_SELL: {ai_decision.reason}"
-        if risk_pass:
-            return Decision.SELL.value, f"AI_ALLOW_SELL: {ai_decision.reason}"
-        return Decision.BLOCK.value, "RISK_FAIL: risk rules blocked"
+    if ai_decision in {Decision.BUY.value, Decision.SELL.value}:
+        if not risk_pass:
+            ai_decision = Decision.BLOCK.value
+            reason = "RISK_FAIL: risk rules blocked"
 
-    # For WAIT/BLOCK, AI AVOID already handled; keep system decision.
-    return system_signal, "SYSTEM_SIGNAL: unchanged"
+    meta = AIDecisionMeta(
+        ai_mode=ai_config.mode,
+        ai_available=ai_query.available,
+        ai_error_type=ai_query.error_type,
+        ai_fallback_used=fallback_used,
+        ai_reason=ai_reason,
+        system_decision_before_ai=system_signal,
+        decision_after_ai=ai_decision,
+    )
+    return ai_decision, reason, meta
 
 
 def apply_ai_to_decision_result(
     *,
     decision_result: Any,
-    ai_decision: AIDecision | None,
+    ai_query: AIQueryResult,
     risk_engine_result: RiskEngineResult,
-) -> Any:
+    ai_config: AIConfig,
+) -> tuple[Any, AIDecisionMeta]:
     """
     Create a new DecisionResult with updated `decision` and `reason`.
-
-    `decision_result` is treated as an Any to avoid importing DecisionResult at module
-    load time (keeps imports stable and avoids circular dependency risk).
     """
-    final_decision, final_reason = decide_final_decision(
+    final_decision, final_reason, meta = decide_final_decision(
         system_signal=decision_result.decision,
-        ai_decision=ai_decision,
+        system_reason=decision_result.reason,
+        ai_query=ai_query,
         risk_engine_result=risk_engine_result,
+        ai_config=ai_config,
     )
-    # Preserve system-provided reason for WAIT/BLOCK when AI does not explicitly
-    # force AVOID. This prevents breaking existing tests that assert specific
-    # decision reasons generated by the SYSTEM decision engine.
     if (
         final_decision == decision_result.decision
         and decision_result.decision in {Decision.WAIT.value, Decision.BLOCK.value}
-        and ai_decision is not None
-        and ai_decision.bias != "AVOID"
+        and ai_query.decision is not None
+        and ai_query.decision.bias != "AVOID"
+        and not meta.ai_fallback_used
     ):
-        return decision_result
+        return decision_result, meta
     if final_decision == decision_result.decision and final_reason == decision_result.reason:
-        return decision_result
+        return decision_result, meta
 
-    # Re-create frozen dataclass with changed fields.
-    return decision_result.__class__(
+    updated = decision_result.__class__(
         decision_id=decision_result.decision_id,
         decision=final_decision,
         reason=final_reason,
@@ -246,4 +343,4 @@ def apply_ai_to_decision_result(
         sell_score=decision_result.sell_score,
         analysis_context=decision_result.analysis_context,
     )
-
+    return updated, meta

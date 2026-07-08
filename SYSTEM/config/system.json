@@ -71,5 +71,11 @@
   "logging": {
     "level": "INFO",
     "format": "standard"
+  },
+  "ai": {
+    "mode": "advisory",
+    "fail_closed": false,
+    "reject_action": "BLOCK",
+    "timeout_ms": 10000
   }
 }

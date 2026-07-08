@@ -25,6 +25,7 @@ _TOP_LEVEL_FIELDS = frozenset(
         "trade_management",
         "dashboard",
         "logging",
+        "ai",
     }
 )
 _SYSTEM_FIELDS = frozenset({"name", "root_path", "timeframe"})
@@ -86,6 +87,7 @@ _TRADE_MANAGEMENT_FIELDS = frozenset(
 )
 _DASHBOARD_FIELDS = frozenset({"refresh_interval_ms"})
 _LOGGING_FIELDS = frozenset({"level", "format"})
+_AI_FIELDS = frozenset({"mode", "fail_closed", "reject_action", "timeout_ms"})
 
 
 def _config_error(message: str, **context: object) -> ConfigurationError:
@@ -186,6 +188,7 @@ def _assert_schema_shape(payload: dict[str, Any]) -> None:
         "dashboard",
     )
     _assert_exact_fields(_ensure_mapping(payload["logging"], "logging"), _LOGGING_FIELDS, "logging")
+    _assert_exact_fields(_ensure_mapping(payload["ai"], "ai"), _AI_FIELDS, "ai")
 
 
 def parse_config_payload(payload: dict[str, Any]) -> SystemConfig:

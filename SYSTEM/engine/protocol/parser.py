@@ -16,6 +16,7 @@ from engine.protocol.constants import (
 from engine.protocol.errors import ProtocolError, ValidationError
 from engine.protocol.models import (
     AckRecord,
+    AIConfig,
     AnalysisConfig,
     AnalysisWeights,
     ControlCommand,
@@ -372,6 +373,14 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             field="logging",
             value_type=type(logging_data).__name__,
         )
+    ai_data = _require_key(payload, "ai", "system_config")
+    if not isinstance(ai_data, dict):
+        raise _protocol_error(
+            "ai section must be an object",
+            label="system_config",
+            field="ai",
+            value_type=type(ai_data).__name__,
+        )
     trade_management_data = _require_key(payload, "trade_management", "system_config")
     if not isinstance(trade_management_data, dict):
         raise _protocol_error(
@@ -545,6 +554,14 @@ def parse_system_config(data: dict[str, Any] | str) -> SystemConfig:
             "system_config",
             level=_require_key(logging_data, "level", "system_config"),
             format=_require_key(logging_data, "format", "system_config"),
+        ),
+        ai=_build_model(
+            AIConfig,
+            "system_config",
+            mode=_require_key(ai_data, "mode", "system_config"),
+            fail_closed=_require_key(ai_data, "fail_closed", "system_config"),
+            reject_action=_require_key(ai_data, "reject_action", "system_config"),
+            timeout_ms=_require_key(ai_data, "timeout_ms", "system_config"),
         ),
     )
 
@@ -745,7 +762,18 @@ def parse_decision_journal_line(line: str) -> DecisionJournalEntry:
         "reason": _require_key(payload, "reason", "decision_journal"),
         "risk_result": _require_key(payload, "risk_result", "decision_journal"),
     }
-    for optional in ("buy_score", "sell_score", "risk_reason"):
+    for optional in (
+        "buy_score",
+        "sell_score",
+        "risk_reason",
+        "ai_mode",
+        "ai_available",
+        "ai_error_type",
+        "ai_fallback_used",
+        "ai_reason",
+        "system_decision_before_ai",
+        "decision_after_ai",
+    ):
         if optional in payload and payload[optional] is not None:
             kwargs[optional] = payload[optional]
     return _build_model(DecisionJournalEntry, "decision_journal", **kwargs)

@@ -720,7 +720,7 @@ def run_instance_cycle(
             runtime=runtime,
             block_reason=block_reason,
         )
-        ai_decision = get_ai_decision(
+        ai_query = get_ai_decision(
             system_signal=decision_result.decision,
             market_context={
                 "relative_spread": spread_snapshot.relative_spread,
@@ -730,6 +730,7 @@ def run_instance_cycle(
                 "buy_score": decision_result.buy_score,
                 "sell_score": decision_result.sell_score,
             },
+            ai_config=runtime.config.ai,
         )
         risk_engine_result = run_instance_risk_phase(
             decision_result=decision_result,
@@ -739,10 +740,11 @@ def run_instance_cycle(
             runtime=runtime,
             trade_params=trade_params,
         )
-        decision_result = apply_ai_to_decision_result(
+        decision_result, ai_meta = apply_ai_to_decision_result(
             decision_result=decision_result,
-            ai_decision=ai_decision,
+            ai_query=ai_query,
             risk_engine_result=risk_engine_result,
+            ai_config=runtime.config.ai,
         )
         log_decision(
             runtime.paths,
@@ -750,6 +752,7 @@ def run_instance_cycle(
             decision_result,
             risk_engine_result,
             timestamp_utc=resolved_timestamp,
+            ai_meta=ai_meta,
         )
         _finalize_cycle_state(
             instance_memory=instance_memory,
@@ -760,7 +763,7 @@ def run_instance_cycle(
         return _cycle_result(
             instance=instance,
             timestamp_utc=resolved_timestamp,
-            completed=True,
+            completed=False,
             error_logged=True,
             decision_result=decision_result,
             risk_engine_result=risk_engine_result,
@@ -806,7 +809,7 @@ def run_instance_cycle(
             runtime=runtime,
             block_reason=block_reason,
         )
-        ai_decision = get_ai_decision(
+        ai_query = get_ai_decision(
             system_signal=decision_result.decision,
             market_context={
                 "relative_spread": spread_snapshot.relative_spread,
@@ -816,6 +819,7 @@ def run_instance_cycle(
                 "buy_score": decision_result.buy_score,
                 "sell_score": decision_result.sell_score,
             },
+            ai_config=runtime.config.ai,
         )
         analysis_duration_ms = monotonic_elapsed_ms(analysis_started)
         risk_started = time.monotonic()
@@ -827,10 +831,11 @@ def run_instance_cycle(
             runtime=runtime,
             trade_params=trade_params,
         )
-        decision_result = apply_ai_to_decision_result(
+        decision_result, ai_meta = apply_ai_to_decision_result(
             decision_result=decision_result,
-            ai_decision=ai_decision,
+            ai_query=ai_query,
             risk_engine_result=risk_engine_result,
+            ai_config=runtime.config.ai,
         )
         decision_duration_ms = monotonic_elapsed_ms(risk_started)
     except SystemError:
@@ -848,6 +853,7 @@ def run_instance_cycle(
         decision_result,
         risk_engine_result,
         timestamp_utc=resolved_timestamp,
+        ai_meta=ai_meta,
     )
 
     if timeout_guard.is_exceeded():
